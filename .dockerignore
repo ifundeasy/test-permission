@@ -1,0 +1,32 @@
+# keep the build context small and the image runtime-only
+.git
+.gitignore
+.dockerignore
+bin
+*.test
+coverage.out
+
+# Node leftovers (pre-Go rewrite; harmless if absent)
+node_modules
+package.json
+package-lock.json
+
+# not needed inside the image (policies/ IS needed and kept)
+db
+demo
+README.md
+CLAUDE.md
+CLAUDE.local.md
+docker-compose.yml
+Makefile
+
+# Claude Code / workspace dirs
+.claude
+.cache
+.plan
+.issues
+.share
+
+# environment
+.env
+.env.*

@@ -1,0 +1,22 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":dependencyDashboard",
+    ":semanticCommits"
+  ],
+  "packageRules": [
+    {
+      "description": "Group non-major npm updates together",
+      "matchManagers": ["npm"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "npm non-major"
+    },
+    {
+      "description": "Pin Docker base images to a digest",
+      "matchDatasources": ["docker"],
+      "pinDigests": true
+    }
+  ],
+  "lockFileMaintenance": { "enabled": true }
+}

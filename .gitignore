@@ -1,0 +1,22 @@
+# dependencies (Node — pre-Go rewrite; harmless if absent)
+node_modules/
+
+# Go build output
+/bin/
+*.test
+coverage.out
+
+# Claude Code — local/personal config (do not commit)
+.claude/settings.local.json
+.claude/agent-memory-local/
+CLAUDE.local.md
+.cache/
+
+# environment (never commit real secrets; keep .env.example)
+.env
+.env.*
+!.env.example
+
+# logs / os cruft
+*.log
+.DS_Store
