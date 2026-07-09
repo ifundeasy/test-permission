@@ -1,7 +1,7 @@
 # ABAC × SpiceDB (server) — CEL caveat `doc_attrs`
-# Document attributes are STATIC caveat context (written at seed time); the principal's
-# clearance/division MUST be supplied at check time (SpiceDB cannot look up subject attrs).
-# Same dataset/IDs as cedar.abac.http — decisions must match.
+# Document attributes (incl. region) are STATIC caveat context (written at seed time); the
+# principal's clearance/division/region MUST be supplied at check time (SpiceDB cannot look up
+# subject attrs). Same dataset/IDs as cedar.abac.http — decisions must match.
 
 @host = http://localhost:8080
 @spicedb = http://localhost:8443
@@ -14,25 +14,25 @@ Content-Type: application/json
 {
   "engine": "spicedb",
   "model": "abac",
-  "principal": "psn-225004",
+  "principal": "psn-337717",
   "action": "doc.read",
   "resource_type": "AbacDocument",
-  "resource": "adoc-0000880",
-  "context": { "clearance": 2, "principal_division": "operations" }
+  "resource": "adoc-0000413",
+  "context": { "clearance": 2, "principal_division": "finance", "principal_region": "denpasar" }
 }
 
-### DENY — via facade
+### DENY — via facade (attribute / region mismatch)
 POST {{host}}/v1/authorize
 Content-Type: application/json
 
 {
   "engine": "spicedb",
   "model": "abac",
-  "principal": "psn-116614",
+  "principal": "psn-1124199",
   "action": "doc.read",
   "resource_type": "AbacDocument",
-  "resource": "adoc-0000008",
-  "context": { "clearance": 2, "principal_division": "sales" }
+  "resource": "adoc-0000321",
+  "context": { "clearance": 3, "principal_division": "operations", "principal_region": "surabaya" }
 }
 
 ### RAW — SpiceDB HTTP gateway with caveat context
@@ -42,8 +42,8 @@ Content-Type: application/json
 
 {
   "consistency": { "fullyConsistent": true },
-  "resource": { "objectType": "abac_document", "objectId": "adoc-0000880" },
+  "resource": { "objectType": "abac_document", "objectId": "adoc-0000413" },
   "permission": "read",
-  "subject": { "object": { "objectType": "persona", "objectId": "psn-225004" } },
-  "context": { "clearance": 2, "principal_division": "operations" }
+  "subject": { "object": { "objectType": "persona", "objectId": "psn-337717" } },
+  "context": { "clearance": 2, "principal_division": "finance", "principal_region": "denpasar" }
 }

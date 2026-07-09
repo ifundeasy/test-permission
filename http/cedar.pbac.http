@@ -1,47 +1,48 @@
 # PBAC × Cedar (embedded) — org-defined policies as parameter ENTITIES
-# The PO references its governing policy (active, max_amount, regions loaded from Postgres);
-# amount/region are request-time context on both engines.
+# The PO references its governing policy (active, min_amount, max_amount, regions loaded from
+# Postgres); amount/region are request-time context on both engines. The amount must sit
+# INSIDE the window: below min_amount is petty cash → deny, above max_amount → deny.
 
 @host = http://localhost:8080
 
-### ALLOW — assignee, active policy, amount ≤ limit, region covered
+### ALLOW — assignee, active policy, amount inside [min,max], region covered
 POST {{host}}/v1/authorize
 Content-Type: application/json
 
 {
   "engine": "cedar",
   "model": "pbac",
-  "principal": "psn-015173",
+  "principal": "psn-091613",
   "action": "po.approve",
   "resource_type": "PurchaseOrder",
-  "resource": "po-000122",
-  "context": { "amount": 486452549, "region": "medan" }
+  "resource": "po-000160",
+  "context": { "amount": 357662180, "region": "bandung" }
 }
 
-### DENY — violates the governing policy (over limit / region / not an assignee / inactive)
+### DENY — same assignee, PO and amount, but the region is NOT in the policy's list
 POST {{host}}/v1/authorize
 Content-Type: application/json
 
 {
   "engine": "cedar",
   "model": "pbac",
-  "principal": "psn-022815",
+  "principal": "psn-091613",
   "action": "po.approve",
   "resource_type": "PurchaseOrder",
-  "resource": "po-000143",
-  "context": { "amount": 430000000, "region": "medan" }
+  "resource": "po-000160",
+  "context": { "amount": 357662180, "region": "medan" }
 }
 
-### Playground — tweak amount/region to cross the policy limits
+### Playground — drop the amount below the policy floor (petty cash) to see the deny
 POST {{host}}/v1/authorize
 Content-Type: application/json
 
 {
   "engine": "cedar",
   "model": "pbac",
-  "principal": "psn-015173",
+  "principal": "psn-091613",
   "action": "po.approve",
   "resource_type": "PurchaseOrder",
-  "resource": "po-000122",
-  "context": { "amount": 999999999999, "region": "medan" }
+  "resource": "po-000160",
+  "context": { "amount": 1, "region": "bandung" }
 }

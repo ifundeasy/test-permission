@@ -69,6 +69,7 @@ type Generator struct {
 	Personas      []Persona
 	PersonaOrg    []int   // persona index → org index
 	PersonasByOrg [][]int // org index → persona indexes
+	NodesByRoot   [][]int // root ordinal → org indexes of that root's subtree
 	Resources     []RegistryResource
 }
 
@@ -135,6 +136,7 @@ func (g *Generator) BuildBasis() {
 		g.RootOrdinal = append(g.RootOrdinal, rootOrd)
 		nodesByRoot[rootOrd] = append(nodesByRoot[rootOrd], i)
 	}
+	g.NodesByRoot = nodesByRoot
 	g.OrgIdx = make(map[string]int, len(g.Orgs))
 	for i, o := range g.Orgs {
 		g.OrgIdx[o.ID] = i
@@ -338,18 +340,20 @@ func (g *Generator) StreamRBAC(sink Sink) error {
 		}
 	}
 
-	// Assignments: weighted 1/2/3 roles (25%/40%/35% → avg 2.1).
+	// Assignments: weighted 1/2/3/4 roles (20%/30%/30%/20% → avg 2.5).
 	for pi := range g.Personas {
 		rootOrd := g.RootOrdinal[g.PersonaOrg[pi]]
 		roles := g.RolesByRoot[rootOrd]
 		var n int
 		switch x := r.IntN(100); {
-		case x < 25:
+		case x < 20:
 			n = 1
-		case x < 65:
+		case x < 50:
 			n = 2
-		default:
+		case x < 80:
 			n = 3
+		default:
+			n = 4
 		}
 		if n > len(roles) {
 			n = len(roles)
@@ -397,8 +401,19 @@ func (g *Generator) StreamReBAC(sink Sink) error {
 			if k > 0 && r.IntN(2) == 0 {
 				parent = fmt.Sprintf("fld-%06d", firstFolderOfOrg[oi]+r.IntN(k))
 			}
+			// ~5% of folders are SHARED with one extra org unit of the SAME
+			// root tree (graph fan-in; cross-tenant stays impossible).
+			shared := ""
+			if r.IntN(20) == 0 {
+				cands := g.NodesByRoot[g.RootOrdinal[oi]]
+				si := cands[r.IntN(len(cands))]
+				if si != oi {
+					shared = g.Orgs[si].ID
+				}
+			}
 			if err := sink.Folder(Folder{
-				ID: fmt.Sprintf("fld-%06d", folderSeq), OrgID: g.Orgs[oi].ID, ParentID: parent,
+				ID: fmt.Sprintf("fld-%06d", folderSeq), OrgID: g.Orgs[oi].ID,
+				ParentID: parent, SharedOrgID: shared,
 			}); err != nil {
 				return err
 			}
@@ -512,7 +527,8 @@ func (g *Generator) StreamPBAC(sink Sink) error {
 				OrgID:       g.Orgs[rootOrd].ID,
 				Name:        fmt.Sprintf("approval-policy-%02d", k),
 				DivisionKey: defaultDivisions[r.IntN(len(defaultDivisions))],
-				MaxAmount:   int64(10+r.IntN(490)) * 1_000_000, // Rp 10jt .. 500jt
+				MinAmount:   int64(1+r.IntN(5)) * 1_000_000,    // floor: Rp 1jt .. 5jt (petty-cash guard)
+				MaxAmount:   int64(10+r.IntN(490)) * 1_000_000, // ceiling: Rp 10jt .. 500jt
 				Regions:     regs,
 				Active:      r.IntN(10) != 0, // 90% active
 			}
@@ -523,13 +539,16 @@ func (g *Generator) StreamPBAC(sink Sink) error {
 		}
 	}
 
-	// Assignments: 1 policy each + 46% a second (policies of the SAME root).
+	// Assignments: 1 policy each + 55% a second + 33% a third (same root) — avg ≈ 1.88.
 	for pi := range g.Personas {
 		rootOrd := g.RootOrdinal[g.PersonaOrg[pi]]
 		base := rootOrd * s.PoliciesPerRoot
 		n := 1
-		if r.IntN(100) < 46 {
+		if r.IntN(100) < 55 {
 			n = 2
+		}
+		if r.IntN(100) < 33 {
+			n++
 		}
 		seen := map[int]struct{}{}
 		for len(seen) < n {
@@ -556,6 +575,7 @@ func (g *Generator) StreamPBAC(sink Sink) error {
 			DivisionKey:     p.DivisionKey,
 			Region:          p.Regions[r.IntN(len(p.Regions))],
 			PolicyActive:    p.Active,
+			PolicyMinAmount: p.MinAmount,
 			PolicyMaxAmount: p.MaxAmount,
 			PolicyRegions:   p.Regions,
 		}); err != nil {
@@ -565,12 +585,12 @@ func (g *Generator) StreamPBAC(sink Sink) error {
 	return sink.EndPhase(PhasePBAC)
 }
 
-// StreamACL emits directly-shared documents with AclEntriesPerDoc grants each
-// (personas of the document's own org subtree population; 70% view, 30% edit).
+// StreamACL emits directly-shared documents with AclEntriesMin..Max grants each
+// (70% view, 30% edit).
 func (g *Generator) StreamACL(sink Sink) error {
 	r := g.rng(PhaseACL)
 	s := g.Scale
-	total := s.AclDocs * (1 + s.AclEntriesPerDoc)
+	total := s.AclDocs * (1 + (s.AclEntriesMin+s.AclEntriesMax)/2)
 	if err := sink.BeginPhase(PhaseACL, total); err != nil {
 		return err
 	}
@@ -580,8 +600,9 @@ func (g *Generator) StreamACL(sink Sink) error {
 		if err := sink.AclDoc(AclDoc{ID: docID, OrgID: g.Orgs[oi].ID}); err != nil {
 			return err
 		}
+		nEntries := s.AclEntriesMin + r.IntN(s.AclEntriesMax-s.AclEntriesMin+1)
 		seen := map[int]struct{}{}
-		for len(seen) < s.AclEntriesPerDoc {
+		for len(seen) < nEntries {
 			pi := r.IntN(len(g.Personas))
 			if _, dup := seen[pi]; dup {
 				continue

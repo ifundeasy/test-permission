@@ -3,10 +3,10 @@
 An **apple-to-apple benchmark** of two authorization engines with fundamentally different shapes —
 **Cedar** (embedded library, in-process) vs **SpiceDB** (standalone server) — on **one Postgres
 server**, across five access models (**RBAC, ReBAC, ABAC, PBAC, ACL**), each backed by
-**≥1,000,000 rows per engine** — 6,763,880 Postgres rows (Cedar) + 5,486,457 relationships
-(SpiceDB) = **12.25M records combined** — in the context of an imagined enterprise SaaS ERP
-("Nusantara ERP"). Both engines hold the identical logical dataset from one deterministic
-generator, and an **equivalence gate** (Cedar == SpiceDB == expected on 42,836 ground-truth tuples)
+**≥3,000,000 rows per engine** (~35M records combined) in the context of an imagined enterprise
+SaaS ERP ("Nusantara ERP") — 1.2M personas across 40k org nodes (subsidiary depth ≤6), with ABAC
+data-residency, PBAC amount windows, and shared-folder ReBAC fan-in. Both engines hold the identical logical dataset from one deterministic
+generator, and an **equivalence gate** (Cedar == SpiceDB == expected on 43,032 ground-truth tuples)
 must pass before any timing runs.
 
 ```mermaid
@@ -37,7 +37,7 @@ Key artifacts: [catalog/services.json](catalog/services.json) (ERP registry meta
 [policies/](policies/) (Cedar, one file per model) ·
 [schema/spicedb/schema.zed](schema/spicedb/schema.zed) ·
 [http/](http/) (ready-made allow/deny requests per engine × model) ·
-[.issues/](.issues/) (gotcha/risk register G1–G18) · [.plan/](.plan/) (project plan).
+[.issues/](.issues/) (gotcha/risk register G1–G12) · [.plan/](.plan/) (project plan).
 
 ## Quick start
 
@@ -55,10 +55,10 @@ One manual check via the facade (engine selected per request):
 
 ```bash
 curl -s localhost:8080/v1/authorize -H 'Content-Type: application/json' -d '{
-  "engine": "cedar", "model": "pbac", "principal": "psn-015173",
-  "action": "po.approve", "resource_type": "PurchaseOrder", "resource": "po-000122",
-  "context": { "amount": 486452549, "region": "medan" }
-}'
+  "engine": "cedar", "model": "pbac", "principal": "psn-091613",
+  "action": "po.approve", "resource_type": "PurchaseOrder", "resource": "po-000160",
+  "context": { "amount": 357662180, "region": "bandung" }
+}'   # → allow (amount inside the policy window, region covered); flip region to "medan" → deny
 ```
 
 ## Findings worth knowing (details in the docs & [.issues/](.issues/))

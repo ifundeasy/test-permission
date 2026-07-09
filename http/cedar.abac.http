@@ -1,33 +1,34 @@
-# ABAC × Cedar (embedded) — attribute comparison (clearance/division/status)
+# ABAC × Cedar (embedded) — attribute comparison (clearance/division/status/region)
 # Cedar loads BOTH sides' attributes from Postgres; the context here is ignored by
 # the Cedar policy (it exists so the same request body works for SpiceDB).
+# Data residency: read requires region match OR a clearance-4 national override.
 
 @host = http://localhost:8080
 
-### ALLOW — clearance ≥ classification, same division, not archived
+### ALLOW — clearance ≥ classification, same division, same region, not archived
 POST {{host}}/v1/authorize
 Content-Type: application/json
 
 {
   "engine": "cedar",
   "model": "abac",
-  "principal": "psn-225004",
+  "principal": "psn-337717",
   "action": "doc.read",
   "resource_type": "AbacDocument",
-  "resource": "adoc-0000880",
-  "context": { "clearance": 2, "principal_division": "operations" }
+  "resource": "adoc-0000413",
+  "context": { "clearance": 2, "principal_division": "finance", "principal_region": "denpasar" }
 }
 
-### DENY — attribute mismatch (division/clearance) or archived document
+### DENY — attribute mismatch (division / clearance / region) or archived document
 POST {{host}}/v1/authorize
 Content-Type: application/json
 
 {
   "engine": "cedar",
   "model": "abac",
-  "principal": "psn-116614",
+  "principal": "psn-1124199",
   "action": "doc.read",
   "resource_type": "AbacDocument",
-  "resource": "adoc-0000008",
-  "context": { "clearance": 2, "principal_division": "sales" }
+  "resource": "adoc-0000321",
+  "context": { "clearance": 3, "principal_division": "operations", "principal_region": "surabaya" }
 }

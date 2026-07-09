@@ -4,11 +4,13 @@
 An **apple-to-apple benchmark of two authorization engines** on one Postgres server:
 **Cedar** (embedded `cedar-go` — the PEP fetches entities from Postgres and evaluates in-process)
 vs **SpiceDB** (standalone server owning its own datastore, checked over gRPC). Five access models —
-**RBAC, ReBAC, ABAC, PBAC, ACL** — each with **≥1M rows per engine**, seeded from ONE deterministic
-generator so both engines hold the identical logical dataset. An equivalence gate (Cedar == SpiceDB
-== expected on every ground-truth tuple) must pass before any timing runs. Domain: imagined
-enterprise SaaS ERP "Nusantara ERP" (orgs w/ subsidiaries, divisions/roles incl. custom, personas,
-and an app-permission registry of 5 microservices as metadata — endpoints/pages/components).
+**RBAC, ReBAC, ABAC, PBAC, ACL** — each with **≥3M rows per engine** (~35M records combined),
+seeded from ONE deterministic generator so both engines hold the identical logical dataset. An
+equivalence gate (Cedar == SpiceDB == expected on every ground-truth tuple) must pass before any
+timing runs. Domain: imagined enterprise SaaS ERP "Nusantara ERP" — org subsidiary trees (depth ≤6),
+divisions/roles incl. custom, 1.2M personas, ABAC data-residency, PBAC amount windows, ~5% shared
+folders (ReBAC fan-in), and an app-permission registry of 5 microservices as metadata. Human docs:
+`docs/` (01 use case, 02 architecture, 03 results + report.html).
 
 ## Stack
 - Go 1.26 (module `github.com/ifundeasy/test-permission`) · stdlib `net/http` (method-based ServeMux)

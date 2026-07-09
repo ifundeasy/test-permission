@@ -12,10 +12,10 @@ Content-Type: application/json
 {
   "engine": "spicedb",
   "model": "rbac",
-  "principal": "psn-000065",
-  "action": "view",
-  "resource_type": "Page",
-  "resource": "pg/sales/sales-dashboard"
+  "principal": "psn-000449",
+  "action": "render",
+  "resource_type": "Component",
+  "resource": "cmp/hr/attendance-board/daily-grid"
 }
 
 ### ALLOW — via facade, cache-bypassing consistency
@@ -25,10 +25,10 @@ Content-Type: application/json
 {
   "engine": "spicedb-fully_consistent",
   "model": "rbac",
-  "principal": "psn-000065",
-  "action": "view",
-  "resource_type": "Page",
-  "resource": "pg/sales/sales-dashboard"
+  "principal": "psn-000449",
+  "action": "render",
+  "resource_type": "Component",
+  "resource": "cmp/hr/attendance-board/daily-grid"
 }
 
 ### DENY — via facade
@@ -38,10 +38,10 @@ Content-Type: application/json
 {
   "engine": "spicedb",
   "model": "rbac",
-  "principal": "psn-000065",
+  "principal": "psn-000449",
   "action": "render",
   "resource_type": "Component",
-  "resource": "cmp/procurement/stock-transfer/filter-bar"
+  "resource": "cmp/hr/payroll-run/adjustment-editor"
 }
 
 ### RAW — SpiceDB HTTP gateway, no code from this repo involved
@@ -51,7 +51,7 @@ Content-Type: application/json
 
 {
   "consistency": { "fullyConsistent": true },
-  "resource": { "objectType": "page", "objectId": "pg/sales/sales-dashboard" },
-  "permission": "view",
-  "subject": { "object": { "objectType": "persona", "objectId": "psn-000065" } }
+  "resource": { "objectType": "component", "objectId": "cmp/hr/attendance-board/daily-grid" },
+  "permission": "render",
+  "subject": { "object": { "objectType": "persona", "objectId": "psn-000449" } }
 }

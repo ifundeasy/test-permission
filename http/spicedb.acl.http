@@ -1,34 +1,34 @@
 # ACL × SpiceDB (server) — acl_document#viewer / #editor
-# Same dataset/IDs as cedar.acl.http — decisions must match.
+# view = viewer + editor; a viewer cannot edit. Same dataset/IDs as cedar.acl.http.
 
 @host = http://localhost:8080
 @spicedb = http://localhost:8443
 @key = benchkey
 
-### ALLOW — direct editor grant, via facade
+### ALLOW — persona has a direct viewer grant, via facade
 POST {{host}}/v1/authorize
 Content-Type: application/json
 
 {
   "engine": "spicedb",
   "model": "acl",
-  "principal": "psn-178603",
-  "action": "acl.edit",
-  "resource_type": "AclDocument",
-  "resource": "acldoc-000065"
-}
-
-### DENY — no grant, via facade
-POST {{host}}/v1/authorize
-Content-Type: application/json
-
-{
-  "engine": "spicedb",
-  "model": "acl",
-  "principal": "psn-013997",
+  "principal": "psn-042051",
   "action": "acl.view",
   "resource_type": "AclDocument",
-  "resource": "acldoc-000065"
+  "resource": "acldoc-000171"
+}
+
+### DENY — the same viewer is not an editor, so edit is refused, via facade
+POST {{host}}/v1/authorize
+Content-Type: application/json
+
+{
+  "engine": "spicedb",
+  "model": "acl",
+  "principal": "psn-042051",
+  "action": "acl.edit",
+  "resource_type": "AclDocument",
+  "resource": "acldoc-000171"
 }
 
 ### RAW — SpiceDB HTTP gateway
@@ -38,7 +38,7 @@ Content-Type: application/json
 
 {
   "consistency": { "fullyConsistent": true },
-  "resource": { "objectType": "acl_document", "objectId": "acldoc-000065" },
-  "permission": "edit",
-  "subject": { "object": { "objectType": "persona", "objectId": "psn-178603" } }
+  "resource": { "objectType": "acl_document", "objectId": "acldoc-000171" },
+  "permission": "view",
+  "subject": { "object": { "objectType": "persona", "objectId": "psn-042051" } }
 }

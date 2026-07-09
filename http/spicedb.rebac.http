@@ -5,30 +5,30 @@
 @spicedb = http://localhost:8443
 @key = benchkey
 
-### ALLOW — via facade
+### ALLOW — via facade (member at the doc's org, an ancestor, or a shared unit)
 POST {{host}}/v1/authorize
 Content-Type: application/json
 
 {
   "engine": "spicedb",
   "model": "rebac",
-  "principal": "psn-272633",
+  "principal": "psn-511178",
   "action": "doc.view",
   "resource_type": "RebacDocument",
-  "resource": "rdoc-000072"
+  "resource": "rdoc-000303"
 }
 
-### DENY — cross-tenant persona, via facade
+### DENY — a different persona with no relationship path, via facade
 POST {{host}}/v1/authorize
 Content-Type: application/json
 
 {
   "engine": "spicedb",
   "model": "rebac",
-  "principal": "psn-357448",
+  "principal": "psn-641800",
   "action": "doc.view",
   "resource_type": "RebacDocument",
-  "resource": "rdoc-000072"
+  "resource": "rdoc-000303"
 }
 
 ### RAW — SpiceDB HTTP gateway (graph traversal happens inside SpiceDB)
@@ -38,7 +38,7 @@ Content-Type: application/json
 
 {
   "consistency": { "fullyConsistent": true },
-  "resource": { "objectType": "rebac_document", "objectId": "rdoc-000072" },
+  "resource": { "objectType": "rebac_document", "objectId": "rdoc-000303" },
   "permission": "view",
-  "subject": { "object": { "objectType": "persona", "objectId": "psn-272633" } }
+  "subject": { "object": { "objectType": "persona", "objectId": "psn-511178" } }
 }

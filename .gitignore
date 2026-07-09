@@ -6,9 +6,6 @@ node_modules/
 *.test
 coverage.out
 
-# benchmark artifacts (deterministically regenerable: make seed-tuples / make bench)
-/bench/
-
 # Claude Code — local/personal config (do not commit)
 .claude/settings.local.json
 .claude/agent-memory-local/

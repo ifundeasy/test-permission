@@ -149,8 +149,9 @@ func run(ctx context.Context, cedarDecider *cedaradapter.Decider, loader port.En
 				fmt.Printf("measuring %s × %s × c=%d …\n", model, eng.name, c)
 				cell := bench.Measure(ctx, model, eng.name, tuples, eng.fn, warmup, n, duration, c)
 				cells = append(cells, cell)
-				fmt.Printf("  %d checks in %.1fs  %.0f/s  p50=%.0fµs p90=%.0fµs p99=%.0fµs errs=%d\n",
-					cell.Checks, cell.Seconds, cell.Throughput, cell.P50US, cell.P90US, cell.P99US, cell.ErrorCount)
+				fmt.Printf("  %d checks in %.1fs  %.0f/s  p50=%.0fµs p90=%.0fµs p99=%.0fµs  cpu=%.0f%% mem=%.1fGB  errs=%d\n",
+					cell.Checks, cell.Seconds, cell.Throughput, cell.P50US, cell.P90US, cell.P99US,
+					cell.Resources.CPUAvgPct, cell.Resources.MemUsedAvgMB/1024, cell.ErrorCount)
 			}
 		}
 	}
@@ -162,11 +163,12 @@ func run(ctx context.Context, cedarDecider *cedaradapter.Decider, loader port.En
 
 func printTable(cells []bench.Cell) {
 	fmt.Println("\n=== results ===")
-	fmt.Printf("%-6s %-26s %4s %9s %10s %9s %9s %9s %9s %6s\n",
-		"model", "engine", "conc", "checks", "thr(/s)", "avg(µs)", "p50(µs)", "p90(µs)", "p99(µs)", "errs")
+	fmt.Printf("%-6s %-26s %4s %9s %10s %9s %9s %9s %9s %7s %8s %6s\n",
+		"model", "engine", "conc", "checks", "thr(/s)", "avg(µs)", "p50(µs)", "p90(µs)", "p99(µs)", "cpu(%)", "mem(GB)", "errs")
 	for _, c := range cells {
-		fmt.Printf("%-6s %-26s %4d %9d %10.0f %9.0f %9.0f %9.0f %9.0f %6d\n",
-			c.Model, c.Engine, c.Concurrency, c.Checks, c.Throughput, c.MeanUS, c.P50US, c.P90US, c.P99US, c.ErrorCount)
+		fmt.Printf("%-6s %-26s %4d %9d %10.0f %9.0f %9.0f %9.0f %9.0f %7.0f %8.1f %6d\n",
+			c.Model, c.Engine, c.Concurrency, c.Checks, c.Throughput, c.MeanUS, c.P50US, c.P90US, c.P99US,
+			c.Resources.CPUAvgPct, c.Resources.MemUsedAvgMB/1024, c.ErrorCount)
 	}
 }
 
@@ -193,12 +195,16 @@ func writeResults(dir string, cells []bench.Cell) error {
 	}
 	defer cf.Close()
 	w := csv.NewWriter(cf)
-	_ = w.Write([]string{"model", "engine", "concurrency", "checks", "errors", "seconds", "checks_per_sec", "mean_us", "p50_us", "p90_us", "p95_us", "p99_us", "max_us"})
+	_ = w.Write([]string{"model", "engine", "concurrency", "checks", "errors", "seconds", "checks_per_sec",
+		"mean_us", "p50_us", "p90_us", "p95_us", "p99_us", "max_us",
+		"cpu_avg_pct", "cpu_max_pct", "mem_used_avg_mb", "mem_used_max_mb"})
 	for _, c := range cells {
 		_ = w.Write([]string{
 			c.Model, c.Engine, strconv.Itoa(c.Concurrency), strconv.Itoa(c.Checks), strconv.Itoa(c.ErrorCount),
 			fmt.Sprintf("%.2f", c.Seconds), fmt.Sprintf("%.1f", c.Throughput), fmt.Sprintf("%.1f", c.MeanUS),
 			fmt.Sprintf("%.1f", c.P50US), fmt.Sprintf("%.1f", c.P90US), fmt.Sprintf("%.1f", c.P95US), fmt.Sprintf("%.1f", c.P99US), fmt.Sprintf("%.1f", c.MaxUS),
+			fmt.Sprintf("%.1f", c.Resources.CPUAvgPct), fmt.Sprintf("%.1f", c.Resources.CPUMaxPct),
+			fmt.Sprintf("%.0f", c.Resources.MemUsedAvgMB), fmt.Sprintf("%.0f", c.Resources.MemUsedMaxMB),
 		})
 	}
 	w.Flush()

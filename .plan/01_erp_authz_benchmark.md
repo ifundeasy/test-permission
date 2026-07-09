@@ -1,16 +1,17 @@
 # Plan 01 — ERP Authorization Benchmark: Cedar vs SpiceDB on one Postgres
 
-Status: **implemented & verified** (2026-07-09)
+Status: **implemented & verified** (2026-07-09) — dataset scale since superseded by
+`02_scale_3m_and_report.md` (the architecture and methodology here remain current)
 
 > Outcome: all acceptance criteria met — search_path isolation smoke-tested (9 SpiceDB tables in
-> schema `spicedb` only); full-scale seed ≥1M rows/model on BOTH engines (Cedar 6.76M rows,
-> SpiceDB 5.49M live relationships); **equivalence gate PASSED at full scale** (42,836 ground-truth
-> tuples × 2 engines, 0 mismatch / 0 error); facade + 10 `.http` files e2e-verified; benchmark
-> cells measured to `bench/results/`. Deviations from plan, discovered by evidence:
+> schema `spicedb` only); full-scale seed on BOTH engines; **equivalence gate PASSED** (all
+> ground-truth tuples × 2 engines, 0 mismatch / 0 error); facade + 10 `.http` files e2e-verified;
+> benchmark cells measured to `bench/results/`. Current dataset scale and exact counts live in
+> `02_scale_3m_and_report.md` and the docs. Deviations from plan, discovered by evidence:
 > (1) SpiceDB ImportBulk (binary COPY) is incompatible with Postgres 18 → seeder uses
 > WriteRelationships+TOUCH (still batch=1000, per requirement); (2) SpiceDB object IDs forbid `:`
 > → registry IDs use `/`; (3) in-batch duplicate relationships rejected → writer dedupes per batch.
-> See `.issues/02_gotcha_20260709.md` (G11–G15).
+> See `.issues/01_gotcha_20260709.md` (consolidated register G1–G12).
 
 ## Why (context & goal)
 This repo pivots from a Cedar PEP demo into an **apple-to-apple benchmark of two authorization

@@ -178,6 +178,11 @@ func (w *SpiceDBWriter) Folder(f Folder) error {
 	if err := w.add(rel("folder", f.ID, "unit", "org_unit", f.OrgID, "", nil)); err != nil {
 		return err
 	}
+	if f.SharedOrgID != "" { // graph fan-in: one extra unit granted visibility
+		if err := w.add(rel("folder", f.ID, "unit", "org_unit", f.SharedOrgID, "", nil)); err != nil {
+			return err
+		}
+	}
 	if f.ParentID != "" {
 		return w.add(rel("folder", f.ID, "parent", "folder", f.ParentID, "", nil))
 	}
@@ -199,6 +204,7 @@ func (w *SpiceDBWriter) AbacDoc(d AbacDoc) error {
 		"classification": d.Classification,
 		"division":       d.DivisionKey,
 		"status":         d.Status,
+		"region":         d.Region,
 	})
 	if err != nil {
 		return fmt.Errorf("abac caveat context: %w", err)
@@ -220,6 +226,7 @@ func (w *SpiceDBWriter) PurchaseOrder(po PurchaseOrder) error {
 	}
 	ctx, err := structpb.NewStruct(map[string]any{
 		"active":     po.PolicyActive,
+		"min_amount": po.PolicyMinAmount,
 		"max_amount": po.PolicyMaxAmount,
 		"regions":    regions,
 	})
