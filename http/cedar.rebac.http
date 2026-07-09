@@ -1,0 +1,30 @@
+# ReBAC × Cedar (embedded) — document → folder → org-unit → ancestor-unit graph
+# Membership at a parent company grants visibility into subsidiaries' documents.
+
+@host = http://localhost:8080
+
+### ALLOW — persona is member at the doc's org (or an ancestor org)
+POST {{host}}/v1/authorize
+Content-Type: application/json
+
+{
+  "engine": "cedar",
+  "model": "rebac",
+  "principal": "psn-272633",
+  "action": "doc.view",
+  "resource_type": "RebacDocument",
+  "resource": "rdoc-000072"
+}
+
+### DENY — persona from a different tenant (root org) — no relationship path
+POST {{host}}/v1/authorize
+Content-Type: application/json
+
+{
+  "engine": "cedar",
+  "model": "rebac",
+  "principal": "psn-357448",
+  "action": "doc.view",
+  "resource_type": "RebacDocument",
+  "resource": "rdoc-000072"
+}

@@ -1,0 +1,96 @@
+// ===========================================================================
+// SpiceDB schema — the apple-to-apple counterpart of policies/*.cedar.
+// One definition group per benchmarked access model; caveats carry the
+// attribute/policy parameters (static context written at seed time wins over
+// check-time context, per SpiceDB's documented merge rule).
+// ===========================================================================
+
+definition persona {}
+
+// --------------------------- RBAC (app registry) ---------------------------
+
+definition role {
+	relation assignee: persona
+}
+
+definition endpoint {
+	relation allowed_role: role#assignee
+	permission execute = allowed_role
+}
+
+definition page {
+	relation allowed_role: role#assignee
+	permission view = allowed_role
+}
+
+definition component {
+	relation allowed_role: role#assignee
+	permission render = allowed_role
+}
+
+// ------------------------------- ReBAC -------------------------------------
+// document → folder → org unit → ancestor units (membership at a parent org
+// grants visibility into subsidiaries' documents, top-down).
+
+definition org_unit {
+	relation parent: org_unit
+	relation member: persona
+	relation manager: persona
+	permission view_docs = member + manager + parent->view_docs
+}
+
+definition folder {
+	relation parent: folder
+	relation unit: org_unit
+	permission view = unit->view_docs + parent->view
+}
+
+definition rebac_document {
+	relation folder: folder
+	permission view = folder->view
+}
+
+// ------------------------------- ABAC --------------------------------------
+// Resource attributes live as STATIC caveat context on a wildcard reader
+// relationship; principal attributes (clearance, principal_division) arrive as
+// check-time context (SpiceDB cannot look up arbitrary subject attributes).
+
+caveat doc_attrs(classification int, division string, status string, clearance int, principal_division string) {
+	clearance >= classification &&
+	principal_division == division &&
+	status != "archived"
+}
+
+definition abac_document {
+	relation reader: persona:* with doc_attrs
+	permission read = reader
+}
+
+// ------------------------------- PBAC --------------------------------------
+// Policy parameters (active, max_amount, regions) are STATIC caveat context on
+// the purchase order's governed_by relationship; amount/region arrive at check
+// time. Assignees are personas on the policy.
+
+caveat po_limits(active bool, max_amount int, regions list<string>, amount int, region string) {
+	active &&
+	amount <= max_amount &&
+	region in regions
+}
+
+definition pbac_policy {
+	relation assignee: persona
+}
+
+definition purchase_order {
+	relation governed_by: pbac_policy with po_limits
+	permission approve = governed_by->assignee
+}
+
+// -------------------------------- ACL --------------------------------------
+
+definition acl_document {
+	relation viewer: persona
+	relation editor: persona
+	permission view = viewer + editor
+	permission edit = editor
+}

@@ -3,15 +3,14 @@ paths:
   - "**/*_test.go"
 ---
 # Testing conventions
-- Go's built-in testing (`go test ./...`, run via `make test`). No third-party assertion library —
-  use table-driven tests and `t.Run` subtests.
-- The 8 canonical decision scenarios are pinned in
-  `internal/adapter/outbound/cedar/engine_test.go` (`TestDecisionMatrix`) against the real
-  `policies/policy.cedar` with hand-built seed entities mirroring `db/init.sql`. HTTP validation is
-  covered in `internal/adapter/inbound/rest/handler_test.go` with a fake `Authorizer`.
-- **Any change to `policies/policy.cedar` or an outbound adapter must keep `make test` green** (or
-  intentionally update the matrix with justification). This is the guard against silent authz drift.
-- The Postgres adapter is currently covered only end-to-end (via the running stack), not by a unit
-  test. TODO: add an integration test against a disposable Postgres seeded from `db/init.sql`.
-- Name tests `*_test.go` beside the code; keep them hermetic (no shared global state, no real network
-  unless explicitly an integration test).
+- Go's built-in testing via `make test`; table-driven tests with `t.Run` subtests; no third-party
+  assertion library.
+- Per-model Cedar policy tests live in `internal/adapter/outbound/cedar/engine_test.go` with
+  hand-built fixtures that mirror what the Postgres loader emits — including the PBAC
+  chained-deref case (`resource.policy.max_amount`), which is a load-bearing cedar-go behavior.
+- HTTP facade validation tests: `internal/adapter/inbound/rest/handler_test.go` (fake router;
+  JSON-number → int64 normalization is part of the contract).
+- The REAL correctness check is the **equivalence gate**: `make seed-test` then `make verify`
+  (miniature dataset, both engines, ground-truth tuples). Run it after ANY change to policies,
+  schema.zed, loaders, adapters, generator, or sampler.
+- Keep unit tests hermetic (no DB/network); the gate covers integration.

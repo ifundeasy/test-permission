@@ -1,62 +1,73 @@
-# cedar-authz-service — Claude Code project context
+# cedar-vs-spicedb-benchmark — Claude Code project context
 
 ## Summary
-A demo Policy Enforcement Point (PEP): an HTTP service that fetches authorization data from
-Postgres, shapes it into Cedar `entities`, and decides allow/deny by calling the embedded
-`github.com/cedar-policy/cedar-go` engine **in-process**. Cedar is a library, not a network service,
-and never touches the database — this service owns all data access (the layer SpiceDB would give you
-for free).
+An **apple-to-apple benchmark of two authorization engines** on one Postgres server:
+**Cedar** (embedded `cedar-go` — the PEP fetches entities from Postgres and evaluates in-process)
+vs **SpiceDB** (standalone server owning its own datastore, checked over gRPC). Five access models —
+**RBAC, ReBAC, ABAC, PBAC, ACL** — each with **≥1M rows per engine**, seeded from ONE deterministic
+generator so both engines hold the identical logical dataset. An equivalence gate (Cedar == SpiceDB
+== expected on every ground-truth tuple) must pass before any timing runs. Domain: imagined
+enterprise SaaS ERP "Nusantara ERP" (orgs w/ subsidiaries, divisions/roles incl. custom, personas,
+and an app-permission registry of 5 microservices as metadata — endpoints/pages/components).
 
 ## Stack
-- Go 1.26 (module `github.com/ifundeasy/test-permission`)
-- HTTP: stdlib `net/http` (Go 1.22+ method-based `ServeMux`) — no third-party router
-- `github.com/cedar-policy/cedar-go` 1.8.0 (policy engine) · `github.com/jackc/pgx/v5` (Postgres)
-- Postgres (schema + seed via `db/init.sql`) · Docker + Docker Compose · Makefile task runner
+- Go 1.26 (module `github.com/ifundeasy/test-permission`) · stdlib `net/http` (method-based ServeMux)
+- `cedar-policy/cedar-go` 1.8.0 (embedded engine) · `authzed/authzed-go` v1.10.0 (SpiceDB client)
+- `jackc/pgx/v5` · Postgres 18.4 · SpiceDB v1.54.0 (`authzed/spicedb`) · Docker Compose · Makefile
 
 ## Commands (see `make help`)
-- Run (local): `make run` (loads `.env`; → `go run ./cmd/authz-service`)
-- Run (full stack): `make up` (→ `docker compose up --build`) · Stop: `make down` · Reset volume: `make reset`
-- Build binary: `make build` (static, `CGO_ENABLED=0`, into `bin/`)
-- Test: `make test` (→ `go test ./...`) · Coverage: `make cover`
-- Format: `make fmt` (`gofmt -w .`) · Static analysis: `make vet` (`go vet ./...`)
-- Deps: `make tidy` (`go mod tidy`) · Image: `make docker-build`
+- Stack: `make up` (postgres + spicedb-migrate + spicedb + facade) · `make down` · `make reset` (DESTRUCTIVE)
+- Seed: `make seed` (full, both engines + tuples, batch 1000, resumable) · `make seed-test` (miniature)
+  · seeder flags: `-engine cedar|spicedb|tuples|all -scale full|test -wipe -resume`
+- Gate: `make verify` — equivalence gate; MUST pass before benchmarking
+- Bench: `make bench` → console + `bench/results/<ts>.{csv,json}`
+- Dev: `make test` · `make vet` · `make fmt` · `make build` · `make run`
 
-## Architecture — hexagonal (ports & adapters)
-The core is pure and imports no Cedar / Postgres / HTTP. Adapters implement the ports; `cmd/` wires them.
+## Architecture — hexagonal, two engines behind one port
 ```
-cmd/authz-service/main.go        composition root — builds adapters, injects into core, serves HTTP
-internal/
-├── core/                        PURE domain (no Cedar/DB/HTTP imports)
-│   ├── domain/                  Request, Result, Decision, Entity, EntityUID
-│   ├── port/                    Authorizer (inbound) · EntityRepository, PolicyEngine (outbound)
-│   └── service/                 Authorizer use case: load entities → decide
-└── adapter/
-    ├── inbound/rest/            driving adapter: HTTP → Authorizer port (net/http ServeMux)
-    └── outbound/
-        ├── cedar/               driven adapter: PolicyEngine via cedar-go (in-process engine)
-        └── postgres/            driven adapter: EntityRepository via pgx (the "glue" you build)
-internal/config/                 env-based configuration
+cmd/authz-service      facade: POST /v1/authorize {engine, model, principal, action, resource_type, resource, context}
+cmd/authz-seed         deterministic dual-engine seeder (canonical stream → sinks)
+cmd/authz-bench        -mode verify (equivalence gate) | -mode run (timing cells)
+internal/core          domain (Request+Context, Entity, Model) · port (Decider, EntityLoader) · service (Router)
+internal/adapter/outbound/cedar     Decider: load entities (via EntityLoader) + in-process evaluate
+internal/adapter/outbound/postgres  EntityLoader: per-model SQL loaders (schema "cedar")
+internal/adapter/outbound/spicedb   Decider: gRPC CheckPermission (consistency mode per instance)
+internal/seed          generator (fixed-seed PCG; per-phase rng streams) · writers · tuple sampler
+internal/bench         measurement harness (warmup, concurrency, percentiles)
+internal/catalog       loads catalog/services.json (the ERP registry metadata)
+policies/*.cedar       ONE file per model; data-driven generic rules (PBAC = policy-parameter entities)
+schema/spicedb/schema.zed  definitions + caveats (doc_attrs, po_limits)
+db/bootstrap.sh        initdb: roles cedar/spicedb + schemas + per-role search_path — NEVER data
 ```
-Request flow of one `POST /authorize`: `rest` validates the body → `service.Authorizer` calls
-`postgres.LoadEntities` (memberships, document attrs, recursive folder CTE) → `cedar` maps to Cedar
-entities and calls `cedar.Authorize` in-process → decision returned.
 
-- Policy model (`policies/policy.cedar`): RBAC (admin role) + ReBAC (owner + group→folder→doc) +
-  ABAC (`confidential` docs). Default DENY; a single `forbid` overrides any `permit`.
-- Data model (`db/init.sql`): users, groups, roles, folders (self-referential), documents,
-  memberships. **No migration tool** — `init.sql` runs once via docker-entrypoint-initdb.d.
-- Endpoints: `POST /authorize` → `{ decision, entities_loaded }` · `GET /health` → `{ ok }`.
-- Tests: the 8 canonical decision scenarios are pinned in
-  `internal/adapter/outbound/cedar/engine_test.go`; HTTP validation in `internal/adapter/inbound/rest`.
-- No API spec file (OpenAPI/proto/GraphQL) in the repo; no CI workflows.
+## Critical invariants (breaking any = broken benchmark)
+1. **Determinism**: same `-seed` ⇒ byte-identical dataset on both engines. Never iterate Go maps in
+   the generator's emit paths; per-phase PRNG streams (`phaseTags`) must not be reordered.
+2. **Equivalence**: `policies/*.cedar` and `schema.zed` are twins — any semantic change on one side
+   MUST be mirrored on the other AND `make verify` re-run. Tuples' `expected` comes from the
+   generator's ground truth.
+3. **Batching**: 1000 records/write on BOTH engines (multi-row INSERT ON CONFLICT DO NOTHING;
+   SpiceDB WriteRelationships OPERATION_TOUCH — server cap is exactly 1000).
+4. **Isolation**: Cedar app data only in schema `cedar`; SpiceDB tables only in schema `spicedb`
+   (via role search_path). Nothing in `public`.
+5. **Scale changes need `-wipe`** — IDs overlap between scales; ON CONFLICT DO NOTHING would keep
+   stale rows and silently diverge the engines.
+
+## Known environment quirks (verified, see README "Findings")
+- SpiceDB `ImportBulkRelationships` (binary COPY) breaks vs Postgres 18 (`08P01`); use TOUCH writes.
+- SpiceDB object IDs forbid `:` → registry IDs use `/` (`ep/finance/invoice-approve`).
+- SpiceDB schema-level isolation on shared Postgres is a Postgres-side mechanism (search_path), not
+  an official SpiceDB feature.
 
 ## Security notes
-- Credentials live in `.env` (DB creds); never read or echo it. `.env.example` documents the vars.
-- This is an authorization service — treat `policies/` and `internal/adapter/outbound/` as
-  security-critical: a bug there is an authorization bypass. See `.claude/rules/authz.md`.
+- Credentials in `.env` (never read/echo it); `.env.example` documents vars incl. per-engine DB
+  roles and the SpiceDB preshared key.
+- `policies/`, `schema/spicedb/`, and `internal/adapter/outbound/` remain security-critical: a bug
+  is an authorization-decision error. See `.claude/rules/authz.md`.
 
 ## Working agreements
-- Prefer editing existing files over adding new ones unless asked.
-- Respect the hexagonal boundaries: keep the core free of adapter imports; add behavior by adding or
-  changing an adapter behind a port. See `.claude/rules/`.
-- Run `make test` / `make vet` after changes and report the result. Never commit unless asked.
+- Human documentation lives in `docs/` (01 use case, 02 architecture, 03 benchmark results) with
+  README as the index — keep them in sync with code changes (Mermaid allowed there, never here).
+- Respect hexagonal boundaries (core imports no adapter). Both engines implement `port.Decider`.
+- After changes: `make test` + `make vet`; after policy/schema/loader/generator changes ALSO
+  `make seed-test` + `make verify` (miniature) and report results. Never commit unless asked.

@@ -13,12 +13,17 @@ package-lock.json
 
 # not needed inside the image (policies/ IS needed and kept)
 db
-demo
+bench
+http
+schema
+catalog
+.plan
 README.md
 CLAUDE.md
 CLAUDE.local.md
 docker-compose.yml
 Makefile
+renovate.json
 
 # Claude Code / workspace dirs
 .claude

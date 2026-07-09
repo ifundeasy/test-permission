@@ -6,75 +6,232 @@ import (
 	"testing"
 
 	"github.com/ifundeasy/test-permission/internal/core/domain"
-	"github.com/ifundeasy/test-permission/internal/core/port"
 )
 
-// seedEntities mirrors db/init.sql so the engine can be tested without Postgres.
-func seedEntities() []domain.Entity {
-	return []domain.Entity{
-		{UID: domain.EntityUID{Type: "User", ID: "alice"}, Parents: []domain.EntityUID{{Type: "Group", ID: "engineering"}}},
-		{UID: domain.EntityUID{Type: "User", ID: "bob"}, Parents: []domain.EntityUID{{Type: "Group", ID: "engineering"}}},
-		{UID: domain.EntityUID{Type: "User", ID: "carol"}, Parents: []domain.EntityUID{{Type: "Role", ID: "admin"}}},
-		{UID: domain.EntityUID{Type: "User", ID: "dave"}},
-		{UID: domain.EntityUID{Type: "Group", ID: "engineering"}},
-		{UID: domain.EntityUID{Type: "Role", ID: "admin"}},
-		{UID: domain.EntityUID{Type: "Folder", ID: "eng"}},
-		{
-			UID:        domain.EntityUID{Type: "Document", ID: "design"},
-			Attributes: map[string]any{"owner": domain.EntityUID{Type: "User", ID: "alice"}, "confidential": false},
-			Parents:    []domain.EntityUID{{Type: "Folder", ID: "eng"}},
-		},
-		{
-			UID:        domain.EntityUID{Type: "Document", ID: "secret"},
-			Attributes: map[string]any{"owner": domain.EntityUID{Type: "User", ID: "alice"}, "confidential": true},
-			Parents:    []domain.EntityUID{{Type: "Folder", ID: "eng"}},
-		},
-	}
-}
-
-func newTestEngine(t *testing.T) port.PolicyEngine {
+// newTestDecider loads the real policy files (no loader — Evaluate is called
+// directly with hand-built fixtures mirroring what the Postgres loader emits).
+func newTestDecider(t *testing.T) *Decider {
 	t.Helper()
-	doc, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "policies", "policy.cedar"))
-	if err != nil {
-		t.Fatalf("read policy: %v", err)
+	dir := filepath.Join("..", "..", "..", "..", "policies")
+	paths, err := filepath.Glob(filepath.Join(dir, "*.cedar"))
+	if err != nil || len(paths) == 0 {
+		t.Fatalf("glob policies: %v (found %d)", err, len(paths))
 	}
-	e, err := NewEngine("policy.cedar", doc)
-	if err != nil {
-		t.Fatalf("new engine: %v", err)
+	docs := make(map[string][]byte, len(paths))
+	for _, p := range paths {
+		b, err := os.ReadFile(p)
+		if err != nil {
+			t.Fatalf("read %s: %v", p, err)
+		}
+		docs[filepath.Base(p)] = b
 	}
-	return e
+	d, err := NewDecider(docs, nil)
+	if err != nil {
+		t.Fatalf("new decider: %v", err)
+	}
+	return d
 }
 
-// TestDecisionMatrix pins the 8 canonical scenarios from demo/cedar.http.
-func TestDecisionMatrix(t *testing.T) {
-	e := newTestEngine(t)
-	ents := seedEntities()
+func uid(typ, id string) domain.EntityUID { return domain.EntityUID{Type: typ, ID: id} }
 
-	cases := []struct {
-		name                        string
-		principal, action, resource string
-		want                        domain.Decision
-	}{
-		{"alice view design (owner + group)", "alice", "view", "design", domain.Allow},
-		{"bob view design (group -> folder -> doc)", "bob", "view", "design", domain.Allow},
-		{"bob edit design (group only grants view)", "bob", "edit", "design", domain.Deny},
-		{"dave view design (no relationship)", "dave", "view", "design", domain.Deny},
-		{"carol view design (admin role)", "carol", "view", "design", domain.Allow},
-		{"bob view secret (confidential, not owner)", "bob", "view", "secret", domain.Deny},
-		{"carol view secret (forbid overrides admin)", "carol", "view", "secret", domain.Deny},
-		{"alice view secret (owner overrides confidential)", "alice", "view", "secret", domain.Allow},
+func TestRBAC(t *testing.T) {
+	d := newTestDecider(t)
+	ents := []domain.Entity{
+		{UID: uid("Role", "role-mgr")},
+		{UID: uid("Role", "role-staff")},
+		{UID: uid("Persona", "p1"), Parents: []domain.EntityUID{uid("Role", "role-mgr")}},
+		{UID: uid("Persona", "p2"), Parents: []domain.EntityUID{uid("Role", "role-staff")}},
+		{UID: uid("Endpoint", "ep1"), Attributes: map[string]any{
+			"allowed_roles": []domain.EntityUID{uid("Role", "role-mgr")},
+		}},
 	}
-
+	cases := []struct {
+		principal string
+		want      domain.Decision
+	}{
+		{"p1", domain.Allow}, // has role-mgr
+		{"p2", domain.Deny},  // staff not granted
+	}
 	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			got, err := e.IsAuthorized(
-				domain.Request{Principal: tc.principal, Action: tc.action, Resource: tc.resource}, ents)
-			if err != nil {
-				t.Fatalf("IsAuthorized error: %v", err)
-			}
-			if got != tc.want {
-				t.Errorf("decision = %q, want %q", got, tc.want)
-			}
-		})
+		got, err := d.Evaluate(domain.Request{
+			Model: domain.ModelRBAC, Principal: tc.principal,
+			Action: "execute", ResourceType: "Endpoint", Resource: "ep1",
+		}, ents)
+		if err != nil {
+			t.Fatalf("evaluate: %v", err)
+		}
+		if got != tc.want {
+			t.Errorf("rbac %s = %q, want %q", tc.principal, got, tc.want)
+		}
+	}
+}
+
+func TestReBAC(t *testing.T) {
+	d := newTestDecider(t)
+	// doc → folder-b → folder-a → unit "org-sub" → parent "org-root"
+	ents := []domain.Entity{
+		{UID: uid("RebacDocument", "doc1"), Parents: []domain.EntityUID{uid("Folder", "f-b")}},
+		{UID: uid("Folder", "f-b"), Parents: []domain.EntityUID{uid("OrgUnit", "org-sub"), uid("Folder", "f-a")}},
+		{UID: uid("Folder", "f-a"), Parents: []domain.EntityUID{uid("OrgUnit", "org-sub")}},
+		{UID: uid("OrgUnit", "org-sub"), Parents: []domain.EntityUID{uid("OrgUnit", "org-root")}},
+		{UID: uid("OrgUnit", "org-root")},
+		// p1 is member at the ROOT (ancestor) — must see subsidiary docs
+		{UID: uid("Persona", "p1"), Attributes: map[string]any{
+			"member_of": []domain.EntityUID{uid("OrgUnit", "org-root")},
+		}},
+		// p2 is member of an unrelated unit
+		{UID: uid("Persona", "p2"), Attributes: map[string]any{
+			"member_of": []domain.EntityUID{uid("OrgUnit", "org-other")},
+		}},
+	}
+	cases := []struct {
+		principal string
+		want      domain.Decision
+	}{
+		{"p1", domain.Allow},
+		{"p2", domain.Deny},
+	}
+	for _, tc := range cases {
+		got, err := d.Evaluate(domain.Request{
+			Model: domain.ModelReBAC, Principal: tc.principal,
+			Action: "doc.view", ResourceType: "RebacDocument", Resource: "doc1",
+		}, ents)
+		if err != nil {
+			t.Fatalf("evaluate: %v", err)
+		}
+		if got != tc.want {
+			t.Errorf("rebac %s = %q, want %q", tc.principal, got, tc.want)
+		}
+	}
+}
+
+func TestABAC(t *testing.T) {
+	d := newTestDecider(t)
+	docs := map[string]domain.Entity{
+		"active": {UID: uid("AbacDocument", "d-active"), Attributes: map[string]any{
+			"classification": int64(3), "division": "finance", "status": "active",
+		}},
+		"archived": {UID: uid("AbacDocument", "d-archived"), Attributes: map[string]any{
+			"classification": int64(1), "division": "finance", "status": "archived",
+		}},
+	}
+	personas := map[string]domain.Entity{
+		"cleared": {UID: uid("Persona", "p-cleared"), Attributes: map[string]any{
+			"clearance": int64(3), "division": "finance",
+		}},
+		"low": {UID: uid("Persona", "p-low"), Attributes: map[string]any{
+			"clearance": int64(2), "division": "finance",
+		}},
+		"wrongdiv": {UID: uid("Persona", "p-wrongdiv"), Attributes: map[string]any{
+			"clearance": int64(4), "division": "sales",
+		}},
+	}
+	cases := []struct {
+		persona, doc string
+		want         domain.Decision
+	}{
+		{"cleared", "active", domain.Allow},  // clearance 3 >= 3, same division
+		{"low", "active", domain.Deny},       // clearance too low
+		{"wrongdiv", "active", domain.Deny},  // division mismatch
+		{"cleared", "archived", domain.Deny}, // forbid overrides (archived)
+	}
+	for _, tc := range cases {
+		p, doc := personas[tc.persona], docs[tc.doc]
+		got, err := d.Evaluate(domain.Request{
+			Model: domain.ModelABAC, Principal: p.UID.ID,
+			Action: "doc.read", ResourceType: "AbacDocument", Resource: doc.UID.ID,
+		}, []domain.Entity{p, doc})
+		if err != nil {
+			t.Fatalf("evaluate: %v", err)
+		}
+		if got != tc.want {
+			t.Errorf("abac %s/%s = %q, want %q", tc.persona, tc.doc, got, tc.want)
+		}
+	}
+}
+
+// TestPBAC pins the load-bearing assumption: chained attribute deref through an
+// entity-typed attribute (resource.policy.max_amount) plus `principal in
+// resource.policy` with the policy entity as a Parent of the persona.
+func TestPBAC(t *testing.T) {
+	d := newTestDecider(t)
+	ents := []domain.Entity{
+		{UID: uid("PbacPolicy", "pol1"), Attributes: map[string]any{
+			"active": true, "max_amount": int64(50_000_000), "regions": []string{"jakarta", "surabaya"},
+		}},
+		{UID: uid("PbacPolicy", "pol-inactive"), Attributes: map[string]any{
+			"active": false, "max_amount": int64(50_000_000), "regions": []string{"jakarta"},
+		}},
+		{UID: uid("Persona", "p1"), Parents: []domain.EntityUID{uid("PbacPolicy", "pol1")}},
+		{UID: uid("Persona", "p2")}, // not assigned to any policy
+		{UID: uid("Persona", "p3"), Parents: []domain.EntityUID{uid("PbacPolicy", "pol-inactive")}},
+		{UID: uid("PurchaseOrder", "po1"), Attributes: map[string]any{
+			"policy": uid("PbacPolicy", "pol1"),
+		}},
+		{UID: uid("PurchaseOrder", "po-inactive"), Attributes: map[string]any{
+			"policy": uid("PbacPolicy", "pol-inactive"),
+		}},
+	}
+	cases := []struct {
+		name      string
+		principal string
+		po        string
+		amount    int64
+		region    string
+		want      domain.Decision
+	}{
+		{"within limits", "p1", "po1", 10_000_000, "jakarta", domain.Allow},
+		{"over amount", "p1", "po1", 60_000_000, "jakarta", domain.Deny},
+		{"wrong region", "p1", "po1", 10_000_000, "medan", domain.Deny},
+		{"not assignee", "p2", "po1", 10_000_000, "jakarta", domain.Deny},
+		{"inactive policy", "p3", "po-inactive", 10_000_000, "jakarta", domain.Deny},
+	}
+	for _, tc := range cases {
+		got, err := d.Evaluate(domain.Request{
+			Model: domain.ModelPBAC, Principal: tc.principal,
+			Action: "po.approve", ResourceType: "PurchaseOrder", Resource: tc.po,
+			Context: map[string]any{"amount": tc.amount, "region": tc.region},
+		}, ents)
+		if err != nil {
+			t.Fatalf("%s: evaluate: %v", tc.name, err)
+		}
+		if got != tc.want {
+			t.Errorf("pbac %s = %q, want %q", tc.name, got, tc.want)
+		}
+	}
+}
+
+func TestACL(t *testing.T) {
+	d := newTestDecider(t)
+	ents := []domain.Entity{
+		{UID: uid("Persona", "p-viewer")},
+		{UID: uid("Persona", "p-editor")},
+		{UID: uid("Persona", "p-none")},
+		{UID: uid("AclDocument", "doc1"), Attributes: map[string]any{
+			"viewers": []domain.EntityUID{uid("Persona", "p-viewer")},
+			"editors": []domain.EntityUID{uid("Persona", "p-editor")},
+		}},
+	}
+	cases := []struct {
+		principal, action string
+		want              domain.Decision
+	}{
+		{"p-viewer", "acl.view", domain.Allow},
+		{"p-viewer", "acl.edit", domain.Deny},
+		{"p-editor", "acl.view", domain.Allow}, // editors can also view
+		{"p-editor", "acl.edit", domain.Allow},
+		{"p-none", "acl.view", domain.Deny},
+	}
+	for _, tc := range cases {
+		got, err := d.Evaluate(domain.Request{
+			Model: domain.ModelACL, Principal: tc.principal,
+			Action: tc.action, ResourceType: "AclDocument", Resource: "doc1",
+		}, ents)
+		if err != nil {
+			t.Fatalf("evaluate: %v", err)
+		}
+		if got != tc.want {
+			t.Errorf("acl %s %s = %q, want %q", tc.principal, tc.action, got, tc.want)
+		}
 	}
 }

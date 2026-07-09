@@ -2,28 +2,75 @@ services:
   postgres:
     image: postgres:18.4
     environment:
-      POSTGRES_USER: ${DB_USER:-app}
+      POSTGRES_USER: ${DB_USER:-app}          # admin user (owns the database)
       POSTGRES_PASSWORD: ${DB_PASSWORD:-app}
       POSTGRES_DB: ${DB_NAME:-authz}
+      # passed through to db/bootstrap.sh (engine roles created at initdb)
+      CEDAR_DB_PASSWORD: ${CEDAR_DB_PASSWORD:-cedar}
+      SPICEDB_DB_PASSWORD: ${SPICEDB_DB_PASSWORD:-spicedb}
     ports:
       - "${DB_PORT:-5432}:5432"
     volumes:
-      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      # named volume (postgres:18 keeps PGDATA under /var/lib/postgresql)
+      - pgdata:/var/lib/postgresql
+      # bootstrap creates roles/schemas ONLY — all data arrives via `make seed`
+      - ./db/bootstrap.sh:/docker-entrypoint-initdb.d/bootstrap.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-app} -d ${DB_NAME:-authz}"]
       interval: 3s
       timeout: 3s
       retries: 10
 
-  authz-service:
-    build: .                          # build the authz-service image from the repo root Dockerfile
+  # one-shot: create/upgrade SpiceDB's datastore tables (land in schema "spicedb"
+  # via the role's search_path — see db/bootstrap.sh)
+  spicedb-migrate:
+    image: authzed/spicedb:v1.54.0
+    command:
+      - "datastore"
+      - "migrate"
+      - "head"
+      - "--datastore-engine=postgres"
+      - "--datastore-conn-uri=postgres://spicedb:${SPICEDB_DB_PASSWORD:-spicedb}@postgres:5432/${DB_NAME:-authz}?sslmode=disable"
     depends_on:
       postgres:
         condition: service_healthy
+    restart: "no"
+
+  spicedb:
+    image: authzed/spicedb:v1.54.0
+    command:
+      - "serve"
+      - "--grpc-preshared-key=${SPICEDB_PRESHARED_KEY:-benchkey}"
+      - "--http-enabled"
+      - "--datastore-engine=postgres"
+      - "--datastore-conn-uri=postgres://spicedb:${SPICEDB_DB_PASSWORD:-spicedb}@postgres:5432/${DB_NAME:-authz}?sslmode=disable"
+    ports:
+      - "${SPICEDB_GRPC_PORT:-50051}:50051"   # gRPC API
+      - "${SPICEDB_HTTP_PORT:-8443}:8443"     # HTTP gateway (raw checks from .http files)
+    depends_on:
+      spicedb-migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "grpc_health_probe", "-addr=localhost:50051"]
+      interval: 3s
+      timeout: 3s
+      retries: 15
+
+  authz-service:
+    build: .                          # HTTP facade over both engines
+    depends_on:
+      postgres:
+        condition: service_healthy
+      spicedb:
+        condition: service_healthy
     env_file:
-      - .env                          # single source of truth for DB_USER/DB_PASSWORD/DB_NAME/PORT
+      - .env
     environment:
-      # inside the compose network the DB is reached by the service name, not localhost
+      # inside the compose network, services are reached by name, not localhost
       DB_HOST: postgres
+      SPICEDB_ENDPOINT: spicedb:50051
     ports:
       - "${PORT:-8080}:8080"
+
+volumes:
+  pgdata:

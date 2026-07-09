@@ -1,0 +1,47 @@
+# PBAC × Cedar (embedded) — org-defined policies as parameter ENTITIES
+# The PO references its governing policy (active, max_amount, regions loaded from Postgres);
+# amount/region are request-time context on both engines.
+
+@host = http://localhost:8080
+
+### ALLOW — assignee, active policy, amount ≤ limit, region covered
+POST {{host}}/v1/authorize
+Content-Type: application/json
+
+{
+  "engine": "cedar",
+  "model": "pbac",
+  "principal": "psn-015173",
+  "action": "po.approve",
+  "resource_type": "PurchaseOrder",
+  "resource": "po-000122",
+  "context": { "amount": 486452549, "region": "medan" }
+}
+
+### DENY — violates the governing policy (over limit / region / not an assignee / inactive)
+POST {{host}}/v1/authorize
+Content-Type: application/json
+
+{
+  "engine": "cedar",
+  "model": "pbac",
+  "principal": "psn-022815",
+  "action": "po.approve",
+  "resource_type": "PurchaseOrder",
+  "resource": "po-000143",
+  "context": { "amount": 430000000, "region": "medan" }
+}
+
+### Playground — tweak amount/region to cross the policy limits
+POST {{host}}/v1/authorize
+Content-Type: application/json
+
+{
+  "engine": "cedar",
+  "model": "pbac",
+  "principal": "psn-015173",
+  "action": "po.approve",
+  "resource_type": "PurchaseOrder",
+  "resource": "po-000122",
+  "context": { "amount": 999999999999, "region": "medan" }
+}

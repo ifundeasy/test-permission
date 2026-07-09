@@ -1,0 +1,57 @@
+# RBAC × SpiceDB (server) — application-registry permissions (endpoints/pages/components)
+# Requires: make up + make seed. Same dataset/IDs as cedar.rbac.http — decisions must match.
+
+@host = http://localhost:8080
+@spicedb = http://localhost:8443
+@key = benchkey
+
+### ALLOW — via facade (engine=spicedb → minimize_latency, SpiceDB's production default)
+POST {{host}}/v1/authorize
+Content-Type: application/json
+
+{
+  "engine": "spicedb",
+  "model": "rbac",
+  "principal": "psn-000065",
+  "action": "view",
+  "resource_type": "Page",
+  "resource": "pg/sales/sales-dashboard"
+}
+
+### ALLOW — via facade, cache-bypassing consistency
+POST {{host}}/v1/authorize
+Content-Type: application/json
+
+{
+  "engine": "spicedb-fully_consistent",
+  "model": "rbac",
+  "principal": "psn-000065",
+  "action": "view",
+  "resource_type": "Page",
+  "resource": "pg/sales/sales-dashboard"
+}
+
+### DENY — via facade
+POST {{host}}/v1/authorize
+Content-Type: application/json
+
+{
+  "engine": "spicedb",
+  "model": "rbac",
+  "principal": "psn-000065",
+  "action": "render",
+  "resource_type": "Component",
+  "resource": "cmp/procurement/stock-transfer/filter-bar"
+}
+
+### RAW — SpiceDB HTTP gateway, no code from this repo involved
+POST {{spicedb}}/v1/permissions/check
+Authorization: Bearer {{key}}
+Content-Type: application/json
+
+{
+  "consistency": { "fullyConsistent": true },
+  "resource": { "objectType": "page", "objectId": "pg/sales/sales-dashboard" },
+  "permission": "view",
+  "subject": { "object": { "objectType": "persona", "objectId": "psn-000065" } }
+}

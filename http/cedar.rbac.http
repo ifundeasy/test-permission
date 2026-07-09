@@ -1,0 +1,44 @@
+# RBAC × Cedar (embedded) — application-registry permissions (endpoints/pages/components)
+# Requires: make up + make seed. IDs below come from the deterministic dataset (seed 42);
+# regenerate examples from bench/tuples/rbac.json after reseeding with a different seed.
+
+@host = http://localhost:8080
+
+### ALLOW — persona's role grants "view" on the sales dashboard page
+POST {{host}}/v1/authorize
+Content-Type: application/json
+
+{
+  "engine": "cedar",
+  "model": "rbac",
+  "principal": "psn-000065",
+  "action": "view",
+  "resource_type": "Page",
+  "resource": "pg/sales/sales-dashboard"
+}
+
+### DENY — same persona, no role grants "render" on this component
+POST {{host}}/v1/authorize
+Content-Type: application/json
+
+{
+  "engine": "cedar",
+  "model": "rbac",
+  "principal": "psn-000065",
+  "action": "render",
+  "resource_type": "Component",
+  "resource": "cmp/procurement/stock-transfer/filter-bar"
+}
+
+### Playground — endpoint execute (edit freely; see catalog/services.json for IDs)
+POST {{host}}/v1/authorize
+Content-Type: application/json
+
+{
+  "engine": "cedar",
+  "model": "rbac",
+  "principal": "psn-000065",
+  "action": "execute",
+  "resource_type": "Endpoint",
+  "resource": "ep/finance/invoice-approve"
+}

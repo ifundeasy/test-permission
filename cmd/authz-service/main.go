@@ -1,6 +1,7 @@
-// Command authz-service is the composition root (the "wiring" of the hexagon):
-// it loads config, constructs the driven adapters (Cedar engine + Postgres
-// repository), injects them into the core use case, and exposes it over HTTP.
+// Command authz-service is the benchmark facade (composition root): it builds
+// both engine deciders — Cedar (embedded, loads entities from Postgres) and
+// SpiceDB (gRPC, both consistency modes) — injects them into the core Router,
+// and exposes POST /v1/authorize over HTTP.
 package main
 
 import (
@@ -10,11 +11,13 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
 	cedaradapter "github.com/ifundeasy/test-permission/internal/adapter/outbound/cedar"
 	pgadapter "github.com/ifundeasy/test-permission/internal/adapter/outbound/postgres"
+	spicedbadapter "github.com/ifundeasy/test-permission/internal/adapter/outbound/spicedb"
 
 	"github.com/ifundeasy/test-permission/internal/adapter/inbound/rest"
 	"github.com/ifundeasy/test-permission/internal/config"
@@ -24,37 +27,41 @@ import (
 func main() {
 	cfg := config.Load()
 
-	// Driven adapter: Cedar policy engine (parse the policy document once).
-	policyDoc, err := os.ReadFile(cfg.PolicyFile)
+	// Cedar: parse every policy file once, wire the Postgres entity loader.
+	docs, err := readPolicies(cfg.PoliciesDir)
 	if err != nil {
-		log.Fatalf("read policy file %q: %v", cfg.PolicyFile, err)
+		log.Fatalf("read policies: %v", err)
 	}
-	engine, err := cedaradapter.NewEngine(cfg.PolicyFile, policyDoc)
-	if err != nil {
-		log.Fatalf("init cedar engine: %v", err)
-	}
-
-	// Driven adapter: Postgres entity repository.
 	ctx := context.Background()
-	pool, err := pgadapter.NewPool(ctx, cfg.DatabaseURL())
+	pool, err := pgadapter.NewPool(ctx, cfg.CedarDatabaseURL())
 	if err != nil {
-		log.Fatalf("connect postgres: %v", err)
+		log.Fatalf("connect postgres (cedar role): %v", err)
 	}
 	defer pool.Close()
-	repo := pgadapter.NewRepository(pool)
+	cedarDecider, err := cedaradapter.NewDecider(docs, pgadapter.NewLoader(pool))
+	if err != nil {
+		log.Fatalf("init cedar decider: %v", err)
+	}
 
-	// Core use case + driving adapter.
-	authz := service.NewAuthorizer(repo, engine)
-	router := rest.NewRouter(rest.NewHandler(authz))
+	// SpiceDB: one decider per consistency mode.
+	spicedbMinLat, err := spicedbadapter.NewDecider(cfg.SpiceDBEndpoint, cfg.SpiceDBKey, spicedbadapter.MinimizeLatency)
+	if err != nil {
+		log.Fatalf("init spicedb decider: %v", err)
+	}
+	spicedbFull, err := spicedbadapter.NewDecider(cfg.SpiceDBEndpoint, cfg.SpiceDBKey, spicedbadapter.FullyConsistent)
+	if err != nil {
+		log.Fatalf("init spicedb decider: %v", err)
+	}
 
+	router := service.NewRouter(cedarDecider, spicedbMinLat, spicedbFull)
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,
-		Handler:           router,
+		Handler:           rest.NewRouter(rest.NewHandler(router)),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
 	go func() {
-		log.Printf("authz-service listening on :%s", cfg.Port)
+		log.Printf("authz-service (benchmark facade) listening on :%s — engines: %v", cfg.Port, router.Engines())
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Fatalf("server error: %v", err)
 		}
@@ -70,4 +77,24 @@ func main() {
 		log.Printf("graceful shutdown failed: %v", err)
 	}
 	log.Println("stopped")
+}
+
+// readPolicies loads every *.cedar file in dir.
+func readPolicies(dir string) (map[string][]byte, error) {
+	paths, err := filepath.Glob(filepath.Join(dir, "*.cedar"))
+	if err != nil {
+		return nil, err
+	}
+	if len(paths) == 0 {
+		return nil, errors.New("no *.cedar policy files found in " + dir)
+	}
+	docs := make(map[string][]byte, len(paths))
+	for _, p := range paths {
+		b, err := os.ReadFile(p)
+		if err != nil {
+			return nil, err
+		}
+		docs[filepath.Base(p)] = b
+	}
+	return docs, nil
 }

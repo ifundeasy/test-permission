@@ -1,17 +1,20 @@
-# api-reviewer memory (seeded from initial scan — the agent maintains this going forward)
+# api-reviewer memory (maintained by the agent; reseeded 2026-07-09 after the benchmark pivot)
 
-## Endpoints
-- `POST /authorize` — body `{ principal, action, resource }` (all required strings). Response
-  `{ decision: "allow"|"deny", entities_loaded: number }`. Missing field or invalid JSON → `400 { error }`.
-- `GET /health` — `{ ok: true }`.
+## Endpoints (facade — cmd/authz-service, internal/adapter/inbound/rest)
+- `POST /v1/authorize` — body `{ engine, model, principal, action, resource_type, resource,
+  context? }`; all except context required → else `400 { error }`. Response
+  `{ engine, model, decision, entities_loaded, duration_ms }`.
+- `GET /health` — `{ ok, engines: [cedar, spicedb-minimize_latency, spicedb-fully_consistent] }`.
 
-## Contract / behavior (Go rewrite, hexagonal)
-- Inbound adapter: `internal/adapter/inbound/rest` (stdlib net/http, method-based ServeMux). It only
-  decodes/validates, calls the `Authorizer` port, and encodes the result.
-- Cedar decision comes from the outbound cedar adapter (`cedar.Authorize`), mapped to
-  `domain.Decision` ("allow"/"deny"); `entities_loaded` = number of entities the repository returned.
+## Contract details
+- `engine: "spicedb"` is aliased to `spicedb-minimize_latency` (SpiceDB's production default).
+- Context normalization is part of the contract: JSON numbers must be integral → int64 (fractional
+  → 400); arrays must be homogeneous string arrays → []string; bool/string pass through.
+- Models: rbac | rebac | abac | pbac | acl. Actions per model: execute/view/render · doc.view ·
+  doc.read · po.approve · acl.view/acl.edit. Resource types: Endpoint/Page/Component,
+  RebacDocument, AbacDocument, PurchaseOrder, AclDocument.
+- Errors return the router's message with 400; internals (SQL/gRPC details) stay server-side.
 
-## History / notes
-- Migrated from Node/Express to Go on 2026-07-09. Two prior gotchas are now FIXED in the Go handler:
-  entity data is no longer logged, and 500s return a generic message (no raw error leaked).
-- Handler validation is covered by `internal/adapter/inbound/rest/handler_test.go`.
+## Testing
+- `internal/adapter/inbound/rest/handler_test.go` covers validation, context normalization, and the
+  spicedb alias. The http/ directory has 10 `.http` files with real seeded IDs (allow + deny).

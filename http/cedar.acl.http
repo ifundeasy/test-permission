@@ -1,0 +1,43 @@
+# ACL × Cedar (embedded) — direct per-resource grants (viewers/editors entity sets)
+# Editors can also view (matches SpiceDB `view = viewer + editor`).
+
+@host = http://localhost:8080
+
+### ALLOW — direct editor grant
+POST {{host}}/v1/authorize
+Content-Type: application/json
+
+{
+  "engine": "cedar",
+  "model": "acl",
+  "principal": "psn-178603",
+  "action": "acl.edit",
+  "resource_type": "AclDocument",
+  "resource": "acldoc-000065"
+}
+
+### DENY — persona has no grant on this document
+POST {{host}}/v1/authorize
+Content-Type: application/json
+
+{
+  "engine": "cedar",
+  "model": "acl",
+  "principal": "psn-013997",
+  "action": "acl.view",
+  "resource_type": "AclDocument",
+  "resource": "acldoc-000065"
+}
+
+### Playground — the editor from above can also view
+POST {{host}}/v1/authorize
+Content-Type: application/json
+
+{
+  "engine": "cedar",
+  "model": "acl",
+  "principal": "psn-178603",
+  "action": "acl.view",
+  "resource_type": "AclDocument",
+  "resource": "acldoc-000065"
+}

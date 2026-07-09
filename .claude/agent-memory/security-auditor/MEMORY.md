@@ -1,26 +1,25 @@
-# security-auditor memory (seeded from initial scan — the agent maintains this going forward)
+# security-auditor memory (maintained by the agent; reseeded 2026-07-09 after the benchmark pivot)
 
-## Authorization model (policies/policy.cedar)
-- RBAC: `permit(principal in Role::"admin", action, resource)`.
-- ReBAC: owner rule (`principal == resource.owner`); group→folder→document via `in`
-  (`Group::"engineering"` may `view` resources in `Folder::"eng"`).
-- ABAC: `forbid` when `resource.confidential == true` unless `principal == resource.owner`.
-- Default DENY; `forbid` overrides all `permit` (admin `carol` is denied the confidential `secret`,
-  but owner `alice` is allowed). Verified by `TestDecisionMatrix` (all 8 cases).
+## What this repo is now
+An apple-to-apple benchmark: Cedar (embedded cedar-go 1.8.0) vs SpiceDB (v1.54.0 server) on one
+Postgres 18.4 server — schema `cedar` (app data, role cedar) vs schema `spicedb` (SpiceDB datastore,
+role spicedb, isolated via per-role search_path). 5 access models, ≥1M rows/model/engine.
 
-## Data / entities (Go, hexagonal)
-- `internal/adapter/outbound/postgres` builds entities per request: User + Group/Role parents;
-  Document with `owner` (entity ref) + `confidential`; full Folder ancestry via a recursive CTE.
-- `internal/adapter/outbound/cedar` maps domain entities → Cedar (`owner` = EntityUID,
-  `confidential` = Boolean). The core (`internal/core`) is Cedar/DB-agnostic.
-- Tables: users, groups, roles, folders(self-ref), documents(owner_id, confidential, folder_id),
-  memberships(user_id, parent_type, parent_id).
+## Authorization model (twin schemas — MUST stay in sync)
+- `policies/*.cedar` (one per model) ⟷ `schema/spicedb/schema.zed` (definitions + caveats).
+- RBAC: persona→role (Parents / role#assignee) + registry allowed_roles.
+- ReBAC: doc→folder→org_unit→ancestors; membership at ancestor sees descendant docs.
+- ABAC: clearance/division/status; Cedar forbid archived ⟷ caveat `doc_attrs` (`status != "archived"`).
+- PBAC: policy-parameter entities (Cedar; no templates in cedar-go) ⟷ caveat `po_limits`
+  (static: active/max_amount/regions; check-time: amount/region).
+- ACL: viewers/editors sets ⟷ viewer/editor relations; editors can view on BOTH sides.
+- Equivalence gate: `make verify` (42,836 ground-truth tuples, 0 mismatch on 2026-07-09).
 
-## Known gotchas / risks (statuses tracked in .issues/01_gotcha_20260709.md)
-- OPEN — weak default DB credential `"app"` in `internal/config/config.go` (G9).
-- OPEN — no migration tool; `init.sql` applies only on a fresh volume (G10).
-- OPEN — no API contract/spec (G6); moving base-image tags in Dockerfile (G4).
-- RESOLVED by the Go rewrite (2026-07-09): entity data no longer logged (G7); 500s no longer leak raw
-  error text (G8); README file references and Node/Postgres version drift corrected (G5, G3).
-- MITIGATED — the 8-scenario decision matrix is now an automated test (G1); Go has `gofmt`/`go vet`
-  wired via the Makefile and the format hook (G2). The Postgres adapter still lacks a unit test.
+## Known risks (tracked in .issues/)
+- Weak local-dev defaults: cedar/spicedb role passwords default to role names; SpiceDB preshared
+  key defaults to `benchkey` (G9).
+- SpiceDB schema isolation is a Postgres search_path mechanism, not an official feature — re-smoke
+  after every SpiceDB upgrade (G14).
+- SpiceDB ImportBulk (binary COPY) breaks vs Postgres 18 → seeder uses WriteRelationships TOUCH (G11).
+- ABAC principal attrs travel as check-time context to SpiceDB — fairness asymmetry, documented (G15).
+- SpiceDB `CONDITIONAL` response = under-supplied caveat context = treated as failure everywhere.

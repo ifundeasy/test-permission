@@ -1,0 +1,44 @@
+# ReBAC × SpiceDB (server) — arrow permissions: rebac_document→folder→org_unit→parent chain
+# Same dataset/IDs as cedar.rebac.http — decisions must match.
+
+@host = http://localhost:8080
+@spicedb = http://localhost:8443
+@key = benchkey
+
+### ALLOW — via facade
+POST {{host}}/v1/authorize
+Content-Type: application/json
+
+{
+  "engine": "spicedb",
+  "model": "rebac",
+  "principal": "psn-272633",
+  "action": "doc.view",
+  "resource_type": "RebacDocument",
+  "resource": "rdoc-000072"
+}
+
+### DENY — cross-tenant persona, via facade
+POST {{host}}/v1/authorize
+Content-Type: application/json
+
+{
+  "engine": "spicedb",
+  "model": "rebac",
+  "principal": "psn-357448",
+  "action": "doc.view",
+  "resource_type": "RebacDocument",
+  "resource": "rdoc-000072"
+}
+
+### RAW — SpiceDB HTTP gateway (graph traversal happens inside SpiceDB)
+POST {{spicedb}}/v1/permissions/check
+Authorization: Bearer {{key}}
+Content-Type: application/json
+
+{
+  "consistency": { "fullyConsistent": true },
+  "resource": { "objectType": "rebac_document", "objectId": "rdoc-000072" },
+  "permission": "view",
+  "subject": { "object": { "objectType": "persona", "objectId": "psn-272633" } }
+}

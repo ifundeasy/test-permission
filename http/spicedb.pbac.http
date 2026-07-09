@@ -1,0 +1,49 @@
+# PBAC × SpiceDB (server) — CEL caveat `po_limits`
+# Policy parameters (active, max_amount, regions) are STATIC caveat context on the
+# purchase order's governed_by relationship; amount/region arrive at check time.
+# Same dataset/IDs as cedar.pbac.http — decisions must match.
+
+@host = http://localhost:8080
+@spicedb = http://localhost:8443
+@key = benchkey
+
+### ALLOW — via facade
+POST {{host}}/v1/authorize
+Content-Type: application/json
+
+{
+  "engine": "spicedb",
+  "model": "pbac",
+  "principal": "psn-015173",
+  "action": "po.approve",
+  "resource_type": "PurchaseOrder",
+  "resource": "po-000122",
+  "context": { "amount": 486452549, "region": "medan" }
+}
+
+### DENY — via facade
+POST {{host}}/v1/authorize
+Content-Type: application/json
+
+{
+  "engine": "spicedb",
+  "model": "pbac",
+  "principal": "psn-022815",
+  "action": "po.approve",
+  "resource_type": "PurchaseOrder",
+  "resource": "po-000143",
+  "context": { "amount": 430000000, "region": "medan" }
+}
+
+### RAW — SpiceDB HTTP gateway with check-time caveat context
+POST {{spicedb}}/v1/permissions/check
+Authorization: Bearer {{key}}
+Content-Type: application/json
+
+{
+  "consistency": { "fullyConsistent": true },
+  "resource": { "objectType": "purchase_order", "objectId": "po-000122" },
+  "permission": "approve",
+  "subject": { "object": { "objectType": "persona", "objectId": "psn-015173" } },
+  "context": { "amount": 486452549, "region": "medan" }
+}

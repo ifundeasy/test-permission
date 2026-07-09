@@ -1,0 +1,33 @@
+# ABAC × Cedar (embedded) — attribute comparison (clearance/division/status)
+# Cedar loads BOTH sides' attributes from Postgres; the context here is ignored by
+# the Cedar policy (it exists so the same request body works for SpiceDB).
+
+@host = http://localhost:8080
+
+### ALLOW — clearance ≥ classification, same division, not archived
+POST {{host}}/v1/authorize
+Content-Type: application/json
+
+{
+  "engine": "cedar",
+  "model": "abac",
+  "principal": "psn-225004",
+  "action": "doc.read",
+  "resource_type": "AbacDocument",
+  "resource": "adoc-0000880",
+  "context": { "clearance": 2, "principal_division": "operations" }
+}
+
+### DENY — attribute mismatch (division/clearance) or archived document
+POST {{host}}/v1/authorize
+Content-Type: application/json
+
+{
+  "engine": "cedar",
+  "model": "abac",
+  "principal": "psn-116614",
+  "action": "doc.read",
+  "resource_type": "AbacDocument",
+  "resource": "adoc-0000008",
+  "context": { "clearance": 2, "principal_division": "sales" }
+}

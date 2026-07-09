@@ -6,7 +6,7 @@ import "net/http"
 // (Go 1.22+). No third-party router is needed for two endpoints.
 func NewRouter(h *Handler) http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /authorize", h.Authorize)
+	mux.HandleFunc("POST /v1/authorize", h.Authorize)
 	mux.HandleFunc("GET /health", h.Health)
 	return mux
 }

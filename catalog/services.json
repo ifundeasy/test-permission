@@ -1,0 +1,141 @@
+{
+  "$comment": "Application-level permission registry for the imagined 'Nusantara ERP' (SaaS, B2B+B2C). These are METADATA, not running servers: 5 microservices, every backend endpoint, UI page, and UI component is a first-class permission target. IDs are derived as ep/<svc>/<key>, pg/<svc>/<key>, cmp/<svc>/<page>/<name> (SpiceDB object IDs forbid ':'). Actions: endpoint=execute, page=view, component=render.",
+  "services": [
+    {
+      "key": "identity",
+      "name": "Identity & Organization Service",
+      "endpoints": [
+        { "key": "org-list", "method": "GET", "path": "/v1/orgs" },
+        { "key": "org-create", "method": "POST", "path": "/v1/orgs" },
+        { "key": "org-detail", "method": "GET", "path": "/v1/orgs/{id}" },
+        { "key": "org-update", "method": "PATCH", "path": "/v1/orgs/{id}" },
+        { "key": "persona-list", "method": "GET", "path": "/v1/personas" },
+        { "key": "persona-create", "method": "POST", "path": "/v1/personas" },
+        { "key": "persona-update", "method": "PATCH", "path": "/v1/personas/{id}" },
+        { "key": "role-create", "method": "POST", "path": "/v1/roles" },
+        { "key": "division-create", "method": "POST", "path": "/v1/divisions" },
+        { "key": "invitation-send", "method": "POST", "path": "/v1/invitations" }
+      ],
+      "pages": [
+        { "key": "org-list", "route": "/orgs", "components": ["header-summary", "filter-bar", "search-box", "org-grid", "row-actions", "btn-create-org", "btn-export", "pagination", "side-panel", "audit-trail"] },
+        { "key": "org-detail", "route": "/orgs/:id", "components": ["org-header", "subsidiary-tree", "division-list", "role-matrix", "btn-edit-org", "btn-add-subsidiary", "member-grid", "activity-feed", "danger-zone", "audit-trail"] },
+        { "key": "org-tree", "route": "/orgs/tree", "components": ["tree-canvas", "depth-selector", "node-tooltip", "btn-expand-all", "btn-collapse-all", "legend-panel", "search-node", "mini-map", "export-svg", "zoom-controls"] },
+        { "key": "persona-list", "route": "/personas", "components": ["header-summary", "filter-bar", "search-box", "persona-grid", "row-actions", "btn-invite", "btn-export", "pagination", "bulk-actions", "status-chips"] },
+        { "key": "persona-detail", "route": "/personas/:id", "components": ["profile-card", "role-badges", "division-badge", "clearance-meter", "btn-edit", "btn-suspend", "session-list", "permission-explorer", "linked-account", "audit-trail"] },
+        { "key": "role-settings", "route": "/settings/roles", "components": ["role-grid", "btn-create-role", "permission-matrix", "default-role-banner", "custom-role-list", "row-actions", "search-box", "import-export", "diff-viewer", "audit-trail"] },
+        { "key": "division-settings", "route": "/settings/divisions", "components": ["division-grid", "btn-create-division", "default-division-banner", "custom-division-list", "row-actions", "search-box", "member-count-chips", "merge-tool", "archive-panel", "audit-trail"] },
+        { "key": "invitation-center", "route": "/invitations", "components": ["invite-form", "pending-grid", "resend-action", "revoke-action", "bulk-invite-upload", "template-picker", "quota-meter", "history-list", "filter-bar", "status-chips"] }
+      ]
+    },
+    {
+      "key": "finance",
+      "name": "Finance & Accounting Service",
+      "endpoints": [
+        { "key": "invoice-list", "method": "GET", "path": "/v1/invoices" },
+        { "key": "invoice-create", "method": "POST", "path": "/v1/invoices" },
+        { "key": "invoice-detail", "method": "GET", "path": "/v1/invoices/{id}" },
+        { "key": "invoice-approve", "method": "POST", "path": "/v1/invoices/{id}/approve" },
+        { "key": "journal-list", "method": "GET", "path": "/v1/journals" },
+        { "key": "journal-create", "method": "POST", "path": "/v1/journals" },
+        { "key": "ledger-view", "method": "GET", "path": "/v1/ledger" },
+        { "key": "tax-report-list", "method": "GET", "path": "/v1/tax-reports" },
+        { "key": "payment-create", "method": "POST", "path": "/v1/payments" },
+        { "key": "payment-list", "method": "GET", "path": "/v1/payments" },
+        { "key": "budget-list", "method": "GET", "path": "/v1/budgets" },
+        { "key": "budget-create", "method": "POST", "path": "/v1/budgets" }
+      ],
+      "pages": [
+        { "key": "invoice-list", "route": "/finance/invoices", "components": ["header-summary", "filter-bar", "search-box", "invoice-grid", "row-actions", "btn-create-invoice", "btn-export", "pagination", "aging-widget", "status-chips"] },
+        { "key": "invoice-detail", "route": "/finance/invoices/:id", "components": ["invoice-header", "line-items-grid", "tax-breakdown", "payment-history", "btn-edit", "btn-send", "btn-void", "attachment-list", "approval-timeline", "audit-trail"] },
+        { "key": "invoice-approval", "route": "/finance/invoices/approvals", "components": ["approval-queue", "btn-approve", "btn-reject", "amount-summary", "policy-banner", "bulk-approve", "delegation-picker", "comment-thread", "filter-bar", "audit-trail"] },
+        { "key": "journal-list", "route": "/finance/journals", "components": ["journal-grid", "filter-bar", "search-box", "btn-new-entry", "period-selector", "row-actions", "btn-export", "pagination", "balance-checker", "status-chips"] },
+        { "key": "journal-entry", "route": "/finance/journals/new", "components": ["entry-form", "debit-credit-grid", "account-picker", "btn-save-draft", "btn-post", "template-picker", "balance-indicator", "attachment-upload", "recurring-toggle", "validation-panel"] },
+        { "key": "general-ledger", "route": "/finance/ledger", "components": ["account-tree", "ledger-grid", "period-selector", "drill-down-panel", "btn-export", "search-box", "balance-summary", "comparison-toggle", "currency-switcher", "audit-trail"] },
+        { "key": "tax-center", "route": "/finance/tax", "components": ["tax-summary-cards", "filing-calendar", "report-grid", "btn-generate-report", "e-faktur-status", "payment-reminders", "rate-table", "document-vault", "filter-bar", "audit-trail"] },
+        { "key": "payment-list", "route": "/finance/payments", "components": ["payment-grid", "filter-bar", "search-box", "btn-record-payment", "reconciliation-widget", "row-actions", "btn-export", "pagination", "bank-balance-cards", "status-chips"] },
+        { "key": "budget-planner", "route": "/finance/budgets", "components": ["budget-grid", "period-selector", "btn-create-budget", "variance-chart", "allocation-editor", "approval-status", "copy-from-last", "division-filter", "forecast-panel", "audit-trail"] },
+        { "key": "finance-dashboard", "route": "/finance", "components": ["cash-position-card", "revenue-chart", "expense-chart", "ar-aging-widget", "ap-aging-widget", "budget-vs-actual", "recent-transactions", "alerts-panel", "period-selector", "export-report"] }
+      ]
+    },
+    {
+      "key": "procurement",
+      "name": "Procurement & Inventory Service",
+      "endpoints": [
+        { "key": "po-list", "method": "GET", "path": "/v1/purchase-orders" },
+        { "key": "po-create", "method": "POST", "path": "/v1/purchase-orders" },
+        { "key": "po-detail", "method": "GET", "path": "/v1/purchase-orders/{id}" },
+        { "key": "po-approve", "method": "POST", "path": "/v1/purchase-orders/{id}/approve" },
+        { "key": "vendor-list", "method": "GET", "path": "/v1/vendors" },
+        { "key": "vendor-create", "method": "POST", "path": "/v1/vendors" },
+        { "key": "vendor-detail", "method": "GET", "path": "/v1/vendors/{id}" },
+        { "key": "inventory-view", "method": "GET", "path": "/v1/inventory" },
+        { "key": "goods-receipt-create", "method": "POST", "path": "/v1/goods-receipts" },
+        { "key": "goods-receipt-list", "method": "GET", "path": "/v1/goods-receipts" },
+        { "key": "stock-transfer-create", "method": "POST", "path": "/v1/stock-transfers" },
+        { "key": "stock-level-view", "method": "GET", "path": "/v1/stock-levels" }
+      ],
+      "pages": [
+        { "key": "po-list", "route": "/procurement/pos", "components": ["header-summary", "filter-bar", "search-box", "po-grid", "row-actions", "btn-create-po", "btn-export", "pagination", "approval-status-chips", "vendor-filter"] },
+        { "key": "po-detail", "route": "/procurement/pos/:id", "components": ["po-header", "line-items-grid", "vendor-card", "delivery-schedule", "btn-edit", "btn-cancel", "receipt-status", "approval-timeline", "attachment-list", "audit-trail"] },
+        { "key": "po-approval", "route": "/procurement/pos/approvals", "components": ["approval-queue", "btn-approve", "btn-reject", "amount-summary", "policy-banner", "budget-check-widget", "delegation-picker", "comment-thread", "filter-bar", "audit-trail"] },
+        { "key": "vendor-list", "route": "/procurement/vendors", "components": ["vendor-grid", "filter-bar", "search-box", "btn-add-vendor", "rating-chips", "row-actions", "btn-export", "pagination", "category-filter", "blacklist-banner"] },
+        { "key": "vendor-detail", "route": "/procurement/vendors/:id", "components": ["vendor-header", "contact-cards", "contract-list", "performance-chart", "btn-edit", "btn-blacklist", "po-history-grid", "document-vault", "payment-terms", "audit-trail"] },
+        { "key": "inventory-overview", "route": "/procurement/inventory", "components": ["stock-summary-cards", "warehouse-selector", "item-grid", "low-stock-alerts", "search-box", "category-tree", "valuation-widget", "movement-chart", "btn-export", "filter-bar"] },
+        { "key": "goods-receipt", "route": "/procurement/receipts", "components": ["receipt-form", "po-picker", "item-checklist", "qc-status-toggle", "btn-post-receipt", "discrepancy-panel", "photo-upload", "receipt-history", "filter-bar", "printer-actions"] },
+        { "key": "stock-transfer", "route": "/procurement/transfers", "components": ["transfer-form", "source-warehouse-picker", "dest-warehouse-picker", "item-grid", "btn-submit-transfer", "in-transit-list", "approval-status", "history-grid", "filter-bar", "print-manifest"] }
+      ]
+    },
+    {
+      "key": "hr",
+      "name": "HR & Payroll Service",
+      "endpoints": [
+        { "key": "employee-list", "method": "GET", "path": "/v1/employees" },
+        { "key": "employee-create", "method": "POST", "path": "/v1/employees" },
+        { "key": "employee-detail", "method": "GET", "path": "/v1/employees/{id}" },
+        { "key": "employee-update", "method": "PATCH", "path": "/v1/employees/{id}" },
+        { "key": "payroll-run-create", "method": "POST", "path": "/v1/payroll-runs" },
+        { "key": "payroll-run-list", "method": "GET", "path": "/v1/payroll-runs" },
+        { "key": "leave-list", "method": "GET", "path": "/v1/leave-requests" },
+        { "key": "leave-create", "method": "POST", "path": "/v1/leave-requests" },
+        { "key": "leave-approve", "method": "POST", "path": "/v1/leave-requests/{id}/approve" },
+        { "key": "attendance-view", "method": "GET", "path": "/v1/attendance" }
+      ],
+      "pages": [
+        { "key": "employee-list", "route": "/hr/employees", "components": ["header-summary", "filter-bar", "search-box", "employee-grid", "row-actions", "btn-add-employee", "btn-export", "pagination", "org-chart-link", "status-chips"] },
+        { "key": "employee-detail", "route": "/hr/employees/:id", "components": ["profile-card", "employment-timeline", "salary-panel", "document-vault", "btn-edit", "btn-offboard", "leave-balance-cards", "performance-notes", "emergency-contacts", "audit-trail"] },
+        { "key": "payroll-dashboard", "route": "/hr/payroll", "components": ["payroll-summary-cards", "run-calendar", "cost-by-division-chart", "btn-new-run", "pending-approvals", "tax-summary", "bank-file-status", "history-grid", "filter-bar", "audit-trail"] },
+        { "key": "payroll-run", "route": "/hr/payroll/runs/:id", "components": ["run-header", "employee-payslip-grid", "adjustment-editor", "btn-calculate", "btn-approve-run", "btn-disburse", "variance-alerts", "tax-breakdown", "bank-file-export", "audit-trail"] },
+        { "key": "leave-inbox", "route": "/hr/leave/inbox", "components": ["approval-queue", "btn-approve", "btn-reject", "calendar-overlay", "balance-checker", "delegation-picker", "comment-thread", "team-coverage-widget", "filter-bar", "history-list"] },
+        { "key": "leave-request", "route": "/hr/leave/new", "components": ["request-form", "leave-type-picker", "date-range-picker", "balance-cards", "attachment-upload", "btn-submit", "approver-preview", "policy-banner", "half-day-toggle", "calendar-preview"] },
+        { "key": "attendance-board", "route": "/hr/attendance", "components": ["presence-summary-cards", "daily-grid", "shift-selector", "late-alerts", "geofence-map", "btn-export", "correction-requests", "overtime-widget", "filter-bar", "month-navigator"] },
+        { "key": "hr-reports", "route": "/hr/reports", "components": ["report-picker", "headcount-chart", "turnover-chart", "leave-utilization", "payroll-cost-trend", "btn-generate", "schedule-report", "export-formats", "division-filter", "period-selector"] }
+      ]
+    },
+    {
+      "key": "sales",
+      "name": "Sales & CRM Service",
+      "endpoints": [
+        { "key": "lead-list", "method": "GET", "path": "/v1/leads" },
+        { "key": "lead-create", "method": "POST", "path": "/v1/leads" },
+        { "key": "lead-detail", "method": "GET", "path": "/v1/leads/{id}" },
+        { "key": "quote-create", "method": "POST", "path": "/v1/quotes" },
+        { "key": "quote-list", "method": "GET", "path": "/v1/quotes" },
+        { "key": "quote-convert", "method": "POST", "path": "/v1/quotes/{id}/convert" },
+        { "key": "order-list", "method": "GET", "path": "/v1/orders" },
+        { "key": "order-create", "method": "POST", "path": "/v1/orders" },
+        { "key": "customer-list", "method": "GET", "path": "/v1/customers" },
+        { "key": "customer-create", "method": "POST", "path": "/v1/customers" }
+      ],
+      "pages": [
+        { "key": "lead-list", "route": "/sales/leads", "components": ["header-summary", "filter-bar", "search-box", "lead-grid", "row-actions", "btn-add-lead", "btn-import", "pagination", "source-chips", "score-badges"] },
+        { "key": "lead-detail", "route": "/sales/leads/:id", "components": ["lead-header", "contact-cards", "activity-timeline", "btn-qualify", "btn-disqualify", "note-editor", "email-thread", "score-breakdown", "next-action-widget", "audit-trail"] },
+        { "key": "pipeline-board", "route": "/sales/pipeline", "components": ["kanban-board", "stage-columns", "deal-cards", "drag-handle", "stage-value-totals", "filter-bar", "owner-filter", "forecast-toggle", "btn-add-deal", "win-loss-chips"] },
+        { "key": "quote-list", "route": "/sales/quotes", "components": ["quote-grid", "filter-bar", "search-box", "btn-create-quote", "status-chips", "row-actions", "btn-export", "pagination", "expiry-alerts", "margin-widget"] },
+        { "key": "quote-builder", "route": "/sales/quotes/new", "components": ["quote-form", "product-picker", "line-items-grid", "discount-editor", "margin-indicator", "btn-save-draft", "btn-send", "template-picker", "approval-banner", "pdf-preview"] },
+        { "key": "order-list", "route": "/sales/orders", "components": ["order-grid", "filter-bar", "search-box", "fulfillment-status-chips", "row-actions", "btn-create-order", "btn-export", "pagination", "revenue-summary", "sla-alerts"] },
+        { "key": "customer-list", "route": "/sales/customers", "components": ["customer-grid", "filter-bar", "search-box", "btn-add-customer", "segment-chips", "row-actions", "btn-export", "pagination", "ltv-widget", "churn-alerts"] },
+        { "key": "sales-dashboard", "route": "/sales", "components": ["revenue-cards", "pipeline-funnel", "top-deals-list", "activity-feed", "leaderboard", "conversion-chart", "period-selector", "target-progress", "region-map", "export-report"] }
+      ]
+    }
+  ]
+}
