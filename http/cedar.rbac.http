@@ -4,30 +4,30 @@
 
 @host = http://localhost:8080
 
-### ALLOW — persona's role grants "view" on the sales dashboard page
+### ALLOW — persona holds a role that grants "render" on this component
 POST {{host}}/v1/authorize
 Content-Type: application/json
 
 {
   "engine": "cedar",
   "model": "rbac",
-  "principal": "psn-000065",
-  "action": "view",
-  "resource_type": "Page",
-  "resource": "pg/sales/sales-dashboard"
-}
-
-### DENY — same persona, no role grants "render" on this component
-POST {{host}}/v1/authorize
-Content-Type: application/json
-
-{
-  "engine": "cedar",
-  "model": "rbac",
-  "principal": "psn-000065",
+  "principal": "psn-000449",
   "action": "render",
   "resource_type": "Component",
-  "resource": "cmp/procurement/stock-transfer/filter-bar"
+  "resource": "cmp/hr/attendance-board/daily-grid"
+}
+
+### DENY — same persona, no role grants "render" on this other component
+POST {{host}}/v1/authorize
+Content-Type: application/json
+
+{
+  "engine": "cedar",
+  "model": "rbac",
+  "principal": "psn-000449",
+  "action": "render",
+  "resource_type": "Component",
+  "resource": "cmp/hr/payroll-run/adjustment-editor"
 }
 
 ### Playground — endpoint execute (edit freely; see catalog/services.json for IDs)
@@ -37,7 +37,7 @@ Content-Type: application/json
 {
   "engine": "cedar",
   "model": "rbac",
-  "principal": "psn-000065",
+  "principal": "psn-000449",
   "action": "execute",
   "resource_type": "Endpoint",
   "resource": "ep/finance/invoice-approve"

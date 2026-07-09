@@ -69,9 +69,11 @@ func main() {
 	engines := strings.Split(*engine, ",")
 	runAll := *engine == "all"
 
-	// Fingerprint stored with checkpoints: resuming under different seed/scale
-	// would silently mix datasets (IDs overlap across scales) — hard-refused.
-	params := fmt.Sprintf("seed=%d scale=%s", *seedVal, *scaleName)
+	// Fingerprint stored with checkpoints: resuming under a different seed,
+	// scale name, OR budget shape would silently mix datasets (IDs overlap) —
+	// hard-refused. The signature encodes the budget-defining knobs.
+	params := fmt.Sprintf("seed=%d scale=%s sig=p%d-a%d-o%d",
+		*seedVal, *scaleName, scale.Personas, scale.AbacDocs, scale.OrgNodes)
 
 	if *wipe {
 		if err := wipeAll(ctx, cfg, *tuplesOut); err != nil {

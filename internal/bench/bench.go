@@ -69,6 +69,9 @@ type Cell struct {
 	P95US       float64 `json:"p95_us"`
 	P99US       float64 `json:"p99_us"`
 	MaxUS       float64 `json:"max_us"`
+	// Host-level resource usage sampled during the timed window (client +
+	// Postgres + SpiceDB share this machine — see docs/03 fairness notes).
+	Resources ResourceUsage `json:"resources"`
 }
 
 // checkFn abstracts the thing being timed (full Check, or Cedar eval-only).
@@ -126,6 +129,7 @@ func Measure(ctx context.Context, model, engine string, tuples []seed.Tuple,
 	deadline := time.Now().Add(duration)
 	useCount := n > 0
 
+	monitor := startResourceMonitor(500 * time.Millisecond)
 	start := time.Now()
 	for w := 0; w < concurrency; w++ {
 		wg.Add(1)
@@ -168,6 +172,7 @@ func Measure(ctx context.Context, model, engine string, tuples []seed.Tuple,
 	}
 	wg.Wait()
 	elapsed := time.Since(start)
+	usage := monitor.Stop()
 
 	var (
 		lats  []time.Duration
@@ -190,6 +195,7 @@ func Measure(ctx context.Context, model, engine string, tuples []seed.Tuple,
 	cell := Cell{
 		Model: model, Engine: engine, Concurrency: concurrency,
 		Checks: total, ErrorCount: errs, Seconds: elapsed.Seconds(),
+		Resources: usage,
 	}
 	if total == 0 || len(lats) == 0 {
 		return cell

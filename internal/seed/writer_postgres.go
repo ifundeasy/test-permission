@@ -23,11 +23,13 @@ CREATE TABLE IF NOT EXISTS pages (id text PRIMARY KEY, service_key text NOT NULL
 CREATE TABLE IF NOT EXISTS components (id text PRIMARY KEY, service_key text NOT NULL, page_id text NOT NULL);
 CREATE TABLE IF NOT EXISTS persona_roles (persona_id text NOT NULL, role_id text NOT NULL, org_id text NOT NULL, PRIMARY KEY (persona_id, role_id));
 CREATE TABLE IF NOT EXISTS role_grants (role_id text NOT NULL, resource_type text NOT NULL, resource_id text NOT NULL, action text NOT NULL, PRIMARY KEY (role_id, resource_type, resource_id, action));
-CREATE TABLE IF NOT EXISTS folders (id text PRIMARY KEY, org_id text NOT NULL, parent_id text);
+CREATE TABLE IF NOT EXISTS folders (id text PRIMARY KEY, org_id text NOT NULL, parent_id text, shared_org_id text);
+ALTER TABLE folders ADD COLUMN IF NOT EXISTS shared_org_id text;
 CREATE TABLE IF NOT EXISTS rebac_documents (id text PRIMARY KEY, folder_id text NOT NULL, owner_persona_id text NOT NULL);
 CREATE TABLE IF NOT EXISTS unit_memberships (persona_id text NOT NULL, org_id text NOT NULL, relation text NOT NULL, PRIMARY KEY (persona_id, org_id, relation));
 CREATE TABLE IF NOT EXISTS abac_documents (id text PRIMARY KEY, org_id text NOT NULL, division_key text NOT NULL, classification smallint NOT NULL, status text NOT NULL, region text NOT NULL);
-CREATE TABLE IF NOT EXISTS pbac_policies (id text PRIMARY KEY, org_id text NOT NULL, name text NOT NULL, division_key text NOT NULL, max_amount bigint NOT NULL, regions text[] NOT NULL, active boolean NOT NULL);
+CREATE TABLE IF NOT EXISTS pbac_policies (id text PRIMARY KEY, org_id text NOT NULL, name text NOT NULL, division_key text NOT NULL, min_amount bigint NOT NULL DEFAULT 0, max_amount bigint NOT NULL, regions text[] NOT NULL, active boolean NOT NULL);
+ALTER TABLE pbac_policies ADD COLUMN IF NOT EXISTS min_amount bigint NOT NULL DEFAULT 0;
 CREATE TABLE IF NOT EXISTS pbac_assignments (persona_id text NOT NULL, policy_id text NOT NULL, PRIMARY KEY (persona_id, policy_id));
 CREATE TABLE IF NOT EXISTS purchase_orders (id text PRIMARY KEY, org_id text NOT NULL, policy_id text NOT NULL, division_key text NOT NULL, region text NOT NULL);
 CREATE TABLE IF NOT EXISTS acl_documents (id text PRIMARY KEY, org_id text NOT NULL);
@@ -56,11 +58,11 @@ var tableCols = map[string][]string{
 	"components":       {"id", "service_key", "page_id"},
 	"persona_roles":    {"persona_id", "role_id", "org_id"},
 	"role_grants":      {"role_id", "resource_type", "resource_id", "action"},
-	"folders":          {"id", "org_id", "parent_id"},
+	"folders":          {"id", "org_id", "parent_id", "shared_org_id"},
 	"rebac_documents":  {"id", "folder_id", "owner_persona_id"},
 	"unit_memberships": {"persona_id", "org_id", "relation"},
 	"abac_documents":   {"id", "org_id", "division_key", "classification", "status", "region"},
-	"pbac_policies":    {"id", "org_id", "name", "division_key", "max_amount", "regions", "active"},
+	"pbac_policies":    {"id", "org_id", "name", "division_key", "min_amount", "max_amount", "regions", "active"},
 	"pbac_assignments": {"persona_id", "policy_id"},
 	"purchase_orders":  {"id", "org_id", "policy_id", "division_key", "region"},
 	"acl_documents":    {"id", "org_id"},
@@ -189,7 +191,7 @@ func (w *PostgresWriter) RoleGrant(rg RoleGrant) error {
 	return w.add("role_grants", []any{rg.RoleID, rg.ResourceType, rg.ResourceID, rg.Action})
 }
 func (w *PostgresWriter) Folder(f Folder) error {
-	return w.add("folders", []any{f.ID, f.OrgID, nullable(f.ParentID)})
+	return w.add("folders", []any{f.ID, f.OrgID, nullable(f.ParentID), nullable(f.SharedOrgID)})
 }
 func (w *PostgresWriter) RebacDoc(d RebacDoc) error {
 	return w.add("rebac_documents", []any{d.ID, d.FolderID, d.OwnerPersonaID})
@@ -201,7 +203,7 @@ func (w *PostgresWriter) AbacDoc(d AbacDoc) error {
 	return w.add("abac_documents", []any{d.ID, d.OrgID, d.DivisionKey, d.Classification, d.Status, d.Region})
 }
 func (w *PostgresWriter) PbacPolicy(p PbacPolicy) error {
-	return w.add("pbac_policies", []any{p.ID, p.OrgID, p.Name, p.DivisionKey, p.MaxAmount, p.Regions, p.Active})
+	return w.add("pbac_policies", []any{p.ID, p.OrgID, p.Name, p.DivisionKey, p.MinAmount, p.MaxAmount, p.Regions, p.Active})
 }
 func (w *PostgresWriter) PbacAssignment(a PbacAssignment) error {
 	return w.add("pbac_assignments", []any{a.PersonaID, a.PolicyID})

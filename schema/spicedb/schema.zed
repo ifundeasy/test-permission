@@ -52,12 +52,15 @@ definition rebac_document {
 
 // ------------------------------- ABAC --------------------------------------
 // Resource attributes live as STATIC caveat context on a wildcard reader
-// relationship; principal attributes (clearance, principal_division) arrive as
-// check-time context (SpiceDB cannot look up arbitrary subject attributes).
+// relationship; principal attributes (clearance, principal_division,
+// principal_region) arrive as check-time context (SpiceDB cannot look up
+// arbitrary subject attributes). Data residency: the reader must be in the
+// document's region unless clearance is 4 (national-auditor override).
 
-caveat doc_attrs(classification int, division string, status string, clearance int, principal_division string) {
+caveat doc_attrs(classification int, division string, status string, region string, clearance int, principal_division string, principal_region string) {
 	clearance >= classification &&
 	principal_division == division &&
+	(principal_region == region || clearance == 4) &&
 	status != "archived"
 }
 
@@ -67,12 +70,14 @@ definition abac_document {
 }
 
 // ------------------------------- PBAC --------------------------------------
-// Policy parameters (active, max_amount, regions) are STATIC caveat context on
-// the purchase order's governed_by relationship; amount/region arrive at check
-// time. Assignees are personas on the policy.
+// Policy parameters (active, min_amount, max_amount, regions) are STATIC
+// caveat context on the purchase order's governed_by relationship;
+// amount/region arrive at check time. The amount must sit INSIDE the policy
+// window (below min = petty cash, above max = beyond mandate).
 
-caveat po_limits(active bool, max_amount int, regions list<string>, amount int, region string) {
+caveat po_limits(active bool, min_amount int, max_amount int, regions list<string>, amount int, region string) {
 	active &&
+	amount >= min_amount &&
 	amount <= max_amount &&
 	region in regions
 }

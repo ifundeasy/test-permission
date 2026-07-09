@@ -1,5 +1,5 @@
 # PBAC × SpiceDB (server) — CEL caveat `po_limits`
-# Policy parameters (active, max_amount, regions) are STATIC caveat context on the
+# Policy parameters (active, min_amount, max_amount, regions) are STATIC caveat context on the
 # purchase order's governed_by relationship; amount/region arrive at check time.
 # Same dataset/IDs as cedar.pbac.http — decisions must match.
 
@@ -7,32 +7,32 @@
 @spicedb = http://localhost:8443
 @key = benchkey
 
-### ALLOW — via facade
+### ALLOW — via facade (amount inside [min,max], region covered)
 POST {{host}}/v1/authorize
 Content-Type: application/json
 
 {
   "engine": "spicedb",
   "model": "pbac",
-  "principal": "psn-015173",
+  "principal": "psn-091613",
   "action": "po.approve",
   "resource_type": "PurchaseOrder",
-  "resource": "po-000122",
-  "context": { "amount": 486452549, "region": "medan" }
+  "resource": "po-000160",
+  "context": { "amount": 357662180, "region": "bandung" }
 }
 
-### DENY — via facade
+### DENY — via facade (same PO & amount, region NOT in the policy list)
 POST {{host}}/v1/authorize
 Content-Type: application/json
 
 {
   "engine": "spicedb",
   "model": "pbac",
-  "principal": "psn-022815",
+  "principal": "psn-091613",
   "action": "po.approve",
   "resource_type": "PurchaseOrder",
-  "resource": "po-000143",
-  "context": { "amount": 430000000, "region": "medan" }
+  "resource": "po-000160",
+  "context": { "amount": 357662180, "region": "medan" }
 }
 
 ### RAW — SpiceDB HTTP gateway with check-time caveat context
@@ -42,8 +42,8 @@ Content-Type: application/json
 
 {
   "consistency": { "fullyConsistent": true },
-  "resource": { "objectType": "purchase_order", "objectId": "po-000122" },
+  "resource": { "objectType": "purchase_order", "objectId": "po-000160" },
   "permission": "approve",
-  "subject": { "object": { "objectType": "persona", "objectId": "psn-015173" } },
-  "context": { "amount": 486452549, "region": "medan" }
+  "subject": { "object": { "objectType": "persona", "objectId": "psn-091613" } },
+  "context": { "amount": 357662180, "region": "bandung" }
 }

@@ -68,13 +68,16 @@ func TestRBAC(t *testing.T) {
 
 func TestReBAC(t *testing.T) {
 	d := newTestDecider(t)
-	// doc → folder-b → folder-a → unit "org-sub" → parent "org-root"
+	// doc → folder-b → folder-a → unit "org-sub" → parent "org-root";
+	// folder-b is also SHARED with "org-shared" (graph fan-in)
 	ents := []domain.Entity{
 		{UID: uid("RebacDocument", "doc1"), Parents: []domain.EntityUID{uid("Folder", "f-b")}},
-		{UID: uid("Folder", "f-b"), Parents: []domain.EntityUID{uid("OrgUnit", "org-sub"), uid("Folder", "f-a")}},
+		{UID: uid("Folder", "f-b"), Parents: []domain.EntityUID{
+			uid("OrgUnit", "org-sub"), uid("OrgUnit", "org-shared"), uid("Folder", "f-a")}},
 		{UID: uid("Folder", "f-a"), Parents: []domain.EntityUID{uid("OrgUnit", "org-sub")}},
 		{UID: uid("OrgUnit", "org-sub"), Parents: []domain.EntityUID{uid("OrgUnit", "org-root")}},
 		{UID: uid("OrgUnit", "org-root")},
+		{UID: uid("OrgUnit", "org-shared")},
 		// p1 is member at the ROOT (ancestor) — must see subsidiary docs
 		{UID: uid("Persona", "p1"), Attributes: map[string]any{
 			"member_of": []domain.EntityUID{uid("OrgUnit", "org-root")},
@@ -83,6 +86,10 @@ func TestReBAC(t *testing.T) {
 		{UID: uid("Persona", "p2"), Attributes: map[string]any{
 			"member_of": []domain.EntityUID{uid("OrgUnit", "org-other")},
 		}},
+		// p3 reaches the doc only via the SHARED unit edge
+		{UID: uid("Persona", "p3"), Attributes: map[string]any{
+			"member_of": []domain.EntityUID{uid("OrgUnit", "org-shared")},
+		}},
 	}
 	cases := []struct {
 		principal string
@@ -90,6 +97,7 @@ func TestReBAC(t *testing.T) {
 	}{
 		{"p1", domain.Allow},
 		{"p2", domain.Deny},
+		{"p3", domain.Allow}, // shared-folder fan-in
 	}
 	for _, tc := range cases {
 		got, err := d.Evaluate(domain.Request{
@@ -109,31 +117,39 @@ func TestABAC(t *testing.T) {
 	d := newTestDecider(t)
 	docs := map[string]domain.Entity{
 		"active": {UID: uid("AbacDocument", "d-active"), Attributes: map[string]any{
-			"classification": int64(3), "division": "finance", "status": "active",
+			"classification": int64(3), "division": "finance", "status": "active", "region": "jakarta",
 		}},
 		"archived": {UID: uid("AbacDocument", "d-archived"), Attributes: map[string]any{
-			"classification": int64(1), "division": "finance", "status": "archived",
+			"classification": int64(1), "division": "finance", "status": "archived", "region": "jakarta",
 		}},
 	}
 	personas := map[string]domain.Entity{
 		"cleared": {UID: uid("Persona", "p-cleared"), Attributes: map[string]any{
-			"clearance": int64(3), "division": "finance",
+			"clearance": int64(3), "division": "finance", "region": "jakarta",
 		}},
 		"low": {UID: uid("Persona", "p-low"), Attributes: map[string]any{
-			"clearance": int64(2), "division": "finance",
+			"clearance": int64(2), "division": "finance", "region": "jakarta",
 		}},
 		"wrongdiv": {UID: uid("Persona", "p-wrongdiv"), Attributes: map[string]any{
-			"clearance": int64(4), "division": "sales",
+			"clearance": int64(4), "division": "sales", "region": "jakarta",
+		}},
+		"wrongregion": {UID: uid("Persona", "p-wrongregion"), Attributes: map[string]any{
+			"clearance": int64(3), "division": "finance", "region": "medan",
+		}},
+		"auditor": {UID: uid("Persona", "p-auditor"), Attributes: map[string]any{
+			"clearance": int64(4), "division": "finance", "region": "medan",
 		}},
 	}
 	cases := []struct {
 		persona, doc string
 		want         domain.Decision
 	}{
-		{"cleared", "active", domain.Allow},  // clearance 3 >= 3, same division
-		{"low", "active", domain.Deny},       // clearance too low
-		{"wrongdiv", "active", domain.Deny},  // division mismatch
-		{"cleared", "archived", domain.Deny}, // forbid overrides (archived)
+		{"cleared", "active", domain.Allow},    // clearance 3 >= 3, division + region match
+		{"low", "active", domain.Deny},         // clearance too low
+		{"wrongdiv", "active", domain.Deny},    // division mismatch
+		{"wrongregion", "active", domain.Deny}, // data residency: region mismatch, clearance < 4
+		{"auditor", "active", domain.Allow},    // clearance-4 override beats region mismatch
+		{"cleared", "archived", domain.Deny},   // forbid overrides (archived)
 	}
 	for _, tc := range cases {
 		p, doc := personas[tc.persona], docs[tc.doc]
@@ -157,10 +173,12 @@ func TestPBAC(t *testing.T) {
 	d := newTestDecider(t)
 	ents := []domain.Entity{
 		{UID: uid("PbacPolicy", "pol1"), Attributes: map[string]any{
-			"active": true, "max_amount": int64(50_000_000), "regions": []string{"jakarta", "surabaya"},
+			"active": true, "min_amount": int64(2_000_000), "max_amount": int64(50_000_000),
+			"regions": []string{"jakarta", "surabaya"},
 		}},
 		{UID: uid("PbacPolicy", "pol-inactive"), Attributes: map[string]any{
-			"active": false, "max_amount": int64(50_000_000), "regions": []string{"jakarta"},
+			"active": false, "min_amount": int64(2_000_000), "max_amount": int64(50_000_000),
+			"regions": []string{"jakarta"},
 		}},
 		{UID: uid("Persona", "p1"), Parents: []domain.EntityUID{uid("PbacPolicy", "pol1")}},
 		{UID: uid("Persona", "p2")}, // not assigned to any policy
@@ -180,8 +198,9 @@ func TestPBAC(t *testing.T) {
 		region    string
 		want      domain.Decision
 	}{
-		{"within limits", "p1", "po1", 10_000_000, "jakarta", domain.Allow},
-		{"over amount", "p1", "po1", 60_000_000, "jakarta", domain.Deny},
+		{"within window", "p1", "po1", 10_000_000, "jakarta", domain.Allow},
+		{"over the ceiling", "p1", "po1", 60_000_000, "jakarta", domain.Deny},
+		{"below the floor", "p1", "po1", 1_000_000, "jakarta", domain.Deny},
 		{"wrong region", "p1", "po1", 10_000_000, "medan", domain.Deny},
 		{"not assignee", "p2", "po1", 10_000_000, "jakarta", domain.Deny},
 		{"inactive policy", "p3", "po-inactive", 10_000_000, "jakarta", domain.Deny},

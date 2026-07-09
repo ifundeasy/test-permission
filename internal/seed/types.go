@@ -28,43 +28,45 @@ type Scale struct {
 	PoliciesPerRoot int // org-defined approval policies             (PBAC)
 	PurchaseOrders  int // purchase orders governed by a policy      (PBAC)
 
-	AclDocs          int // directly-shared documents                (ACL)
-	AclEntriesPerDoc int // direct grants per document               (ACL)
+	AclDocs       int // directly-shared documents                   (ACL)
+	AclEntriesMin int // min direct grants per document              (ACL)
+	AclEntriesMax int // max direct grants per document              (ACL)
 
 	TuplesPerModel int // sampled ground-truth tuples per model (half allow, half deny)
 }
 
-// FullScale reaches ≥1M countable rows per access model per engine:
+// FullScale reaches ≥3M countable rows per access model per engine:
 //
-//	RBAC  ≈ 480k personas × ~2.1 roles + 16k roles × 8 grants ≈ 1.14M
-//	ReBAC ≈ 600k doc edges + 120k folders + 520k memberships + 18k org edges ≈ 1.26M
-//	ABAC  = 1.00M attribute rows / caveated relationships
-//	PBAC  ≈ 700k assignments + 300k PO links + 40k policies ≈ 1.04M
-//	ACL   = 350k docs × 3 entries = 1.05M
+//	RBAC  ≈ 1.2M personas × ~2.5 roles + ~21k roles × 12 grants ≈ 3.25M
+//	ReBAC ≈ 1.8M doc edges + 360k folders + 1.3M memberships + 37.5k org edges ≈ 3.5M
+//	ABAC  = 3.0M attribute rows / caveated relationships
+//	PBAC  ≈ 2.26M assignments + 800k PO links (+100k policy rows on the Cedar side) ≈ 3.06M
+//	ACL   = 1M docs × 2–4 entries (avg 3) = 3.0M
 func FullScale() Scale {
 	return Scale{
-		Roots:    2_000,
-		OrgNodes: 20_000,
-		MaxDepth: 4,
+		Roots:    2_500,
+		OrgNodes: 40_000,
+		MaxDepth: 6,
 
 		DivCustomMax:  4,
-		RoleCustomMax: 5,
+		RoleCustomMax: 7,
 
-		Accounts: 300_000,
-		Personas: 480_000,
+		Accounts: 750_000,
+		Personas: 1_200_000,
 
-		GrantsPerRole: 8,
-		FoldersPerOrg: 6,
+		GrantsPerRole: 12,
+		FoldersPerOrg: 9,
 		DocsPerFolder: 5,
-		ManagerEdges:  40_000,
+		ManagerEdges:  100_000,
 
-		AbacDocs: 1_000_000,
+		AbacDocs: 3_000_000,
 
-		PoliciesPerRoot: 20,
-		PurchaseOrders:  300_000,
+		PoliciesPerRoot: 40,
+		PurchaseOrders:  800_000,
 
-		AclDocs:          350_000,
-		AclEntriesPerDoc: 3,
+		AclDocs:       1_000_000,
+		AclEntriesMin: 2,
+		AclEntriesMax: 4,
 
 		TuplesPerModel: 10_000,
 	}
@@ -93,8 +95,9 @@ func TestScale() Scale {
 		PoliciesPerRoot: 5,
 		PurchaseOrders:  800,
 
-		AclDocs:          500,
-		AclEntriesPerDoc: 3,
+		AclDocs:       500,
+		AclEntriesMin: 2,
+		AclEntriesMax: 4,
 
 		TuplesPerModel: 200,
 	}
@@ -169,9 +172,10 @@ type RoleGrant struct {
 }
 
 type Folder struct {
-	ID       string
-	OrgID    string
-	ParentID string // "" for org-level roots
+	ID          string
+	OrgID       string
+	ParentID    string // "" for org-level roots
+	SharedOrgID string // "" or one extra org-unit granted visibility (same root tree — graph fan-in)
 }
 
 type RebacDoc struct {
@@ -200,6 +204,7 @@ type PbacPolicy struct {
 	OrgID       string // root org
 	Name        string
 	DivisionKey string
+	MinAmount   int64 // amount floor (petty-cash guard) — min ≤ amount ≤ max
 	MaxAmount   int64
 	Regions     []string
 	Active      bool
@@ -219,6 +224,7 @@ type PurchaseOrder struct {
 	// Denormalized policy parameters so the SpiceDB writer can attach the
 	// po_limits caveat context statelessly (identical facts both engines).
 	PolicyActive    bool
+	PolicyMinAmount int64
 	PolicyMaxAmount int64
 	PolicyRegions   []string
 }

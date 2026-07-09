@@ -41,7 +41,7 @@ REVOKE CREATE ON SCHEMA public FROM PUBLIC;
 
 Verified by smoke test: after `spicedb datastore migrate head`, all 9 SpiceDB tables land in schema
 `spicedb`, none in `public`/`cedar`. This is a Postgres mechanism, not a SpiceDB feature — re-check
-after every SpiceDB upgrade (gotcha G14). Fallback: two databases on the same server.
+after every SpiceDB upgrade (gotcha G3). Fallback: two databases on the same server.
 
 ## 2. Hexagonal layout — both engines behind one port
 
@@ -122,9 +122,9 @@ change to one side must be mirrored on the other and re-verified (`make verify`)
 | Model | Question | Cedar realization | SpiceDB realization |
 |---|---|---|---|
 | RBAC | May P execute/view/render registry resource X? | persona's roles = entity **Parents**; resource attr `allowed_roles` (set of Role refs); one generic rule `principal in resource.allowed_roles` — [policies/rbac.cedar](../policies/rbac.cedar) | `role#assignee@persona`; `endpoint/page/component#allowed_role@role#assignee`; `permission execute = allowed_role` |
-| ReBAC | May P view doc D via folder → unit → ancestors? | Parents graph doc→folder→unit→parent-units; persona attr `member_of`; rule `resource in principal.member_of` — [policies/rebac.cedar](../policies/rebac.cedar) | arrows: `rebac_document.folder->view`, `folder = unit->view_docs + parent->view`, `org_unit.view_docs = member + manager + parent->view_docs` |
-| ABAC | May P (clearance, division) read D (classification, division, status)? | attribute comparison + `forbid` on `status == "archived"` — [policies/abac.cedar](../policies/abac.cedar) | CEL caveat `doc_attrs` on a wildcard `reader: persona:*`; document attrs = **static caveat context**, principal attrs at check time |
-| PBAC | May P approve PO N (amount, region) under its governing policy? | **policy-parameter entities** — policy rows become entities with `{active, max_amount, regions}`; `principal in resource.policy && context.amount <= resource.policy.max_amount …` — [policies/pbac.cedar](../policies/pbac.cedar) | caveat `po_limits` on `purchase_order#governed_by@pbac_policy` with policy params as static context; `permission approve = governed_by->assignee` |
+| ReBAC | May P view doc D via folder → unit → ancestors (or a SHARED unit)? | Parents graph doc→folder→unit(s)→parent-units — shared folders carry a second OrgUnit parent; persona attr `member_of`; rule `resource in principal.member_of` — [policies/rebac.cedar](../policies/rebac.cedar) | arrows: `rebac_document.folder->view`, `folder = unit->view_docs + parent->view` (shared folders have TWO `unit` relationships), `org_unit.view_docs = member + manager + parent->view_docs` |
+| ABAC | May P (clearance, division, region) read D (classification, division, status, region)? | attribute comparison incl. **data residency** (`region match OR clearance == 4`) + `forbid` on `status == "archived"` — [policies/abac.cedar](../policies/abac.cedar) | CEL caveat `doc_attrs` on a wildcard `reader: persona:*`; document attrs (incl. region) = **static caveat context**, principal attrs (incl. `principal_region`) at check time |
+| PBAC | May P approve PO N (amount, region) under its governing policy? | **policy-parameter entities** — policy rows become entities with `{active, min_amount, max_amount, regions}`; `principal in resource.policy && min ≤ context.amount ≤ max …` — [policies/pbac.cedar](../policies/pbac.cedar) | caveat `po_limits` on `purchase_order#governed_by@pbac_policy` with policy params (incl. `min_amount`) as static context; `permission approve = governed_by->assignee` |
 | ACL | May P view/edit D via direct grant? | resource attrs `viewers`/`editors` (entity sets), `.contains(principal)`; **editors can also view** — [policies/acl.cedar](../policies/acl.cedar) | `acl_document#viewer/#editor@persona`; `permission view = viewer + editor` |
 
 Two design decisions worth knowing:
@@ -153,8 +153,8 @@ flowchart LR
 - Batch size is **1000 on both engines** — deliberately equal, and it is exactly SpiceDB's default
   `WriteRelationships` cap.
 - The faster `ImportBulkRelationships` (binary COPY) is **not** used: it breaks against Postgres 18
-  with `protocol synchronization was lost (08P01)` — gotcha G11 in
-  [.issues/02_gotcha_20260709.md](../.issues/02_gotcha_20260709.md). TOUCH-writes are idempotent,
+  with `protocol synchronization was lost (08P01)` — gotcha G1 in
+  [.issues/01_gotcha_20260709.md](../.issues/01_gotcha_20260709.md). TOUCH-writes are idempotent,
   making re-runs/resume safe on both sides.
 - The SpiceDB writer dedupes relationships **within a batch** (WriteRelationships rejects in-request
   duplicates) — see [internal/seed/writer_spicedb.go](../internal/seed/writer_spicedb.go).

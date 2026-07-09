@@ -2,8 +2,13 @@
 BINARY  := authz-service
 PKG     := ./cmd/authz-service
 BIN_DIR := bin
-# load .env for every target that talks to the stack from the host
-ENV     := set -a; [ -f .env ] && . ./.env || true; set +a;
+# load .env for every target that talks to the stack from the host, then force the
+# SpiceDB endpoint to a host-reachable address: the compose-internal default
+# (spicedb:50051) only resolves inside the Docker network, so host-run tools
+# (seed/verify/bench/run) hit "name resolver error: produced zero addresses".
+# Override with SPICEDB_HOST_ENDPOINT if SpiceDB's gRPC port is mapped elsewhere.
+ENV     := set -a; [ -f .env ] && . ./.env || true; set +a; \
+           export SPICEDB_ENDPOINT="$${SPICEDB_HOST_ENDPOINT:-localhost:50051}";
 
 .PHONY: help build run test cover fmt vet tidy docker-build up logs down reset clean \
         seed seed-cedar seed-spicedb seed-tuples seed-test verify bench

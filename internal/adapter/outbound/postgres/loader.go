@@ -141,27 +141,32 @@ func (l *Loader) loadReBAC(ctx context.Context, req domain.Request) ([]domain.En
 	}
 
 	// Folder chain upward; each folder is parented by its parent folder AND its
-	// owning org unit (mirrors SpiceDB folder.unit + folder.parent).
+	// owning org unit — plus an optional SHARED org unit (graph fan-in; mirrors
+	// SpiceDB folder.unit + folder.parent, with a second unit edge when shared).
 	frows, err := l.pool.Query(ctx, `
 		WITH RECURSIVE fchain AS (
-		  SELECT id, parent_id, org_id FROM folders WHERE id = $1
+		  SELECT id, parent_id, org_id, shared_org_id FROM folders WHERE id = $1
 		  UNION ALL
-		  SELECT f.id, f.parent_id, f.org_id
+		  SELECT f.id, f.parent_id, f.org_id, f.shared_org_id
 		  FROM folders f JOIN fchain c ON f.id = c.parent_id
 		)
-		SELECT id, parent_id, org_id FROM fchain`, *folderID)
+		SELECT id, parent_id, org_id, shared_org_id FROM fchain`, *folderID)
 	if err != nil {
 		return nil, fmt.Errorf("query folder chain: %w", err)
 	}
 	unitIDs := make([]string, 0, 4)
 	for frows.Next() {
 		var id, orgID string
-		var parent *string
-		if err := frows.Scan(&id, &parent, &orgID); err != nil {
+		var parent, sharedOrg *string
+		if err := frows.Scan(&id, &parent, &orgID, &sharedOrg); err != nil {
 			frows.Close()
 			return nil, fmt.Errorf("scan folder: %w", err)
 		}
 		parents := []domain.EntityUID{{Type: typeOrgUnit, ID: orgID}}
+		if sharedOrg != nil {
+			parents = append(parents, domain.EntityUID{Type: typeOrgUnit, ID: *sharedOrg})
+			unitIDs = append(unitIDs, *sharedOrg)
+		}
 		if parent != nil {
 			parents = append(parents, domain.EntityUID{Type: typeFolder, ID: *parent})
 		}
@@ -210,26 +215,26 @@ func (l *Loader) loadABAC(ctx context.Context, req domain.Request) ([]domain.Ent
 	ents := make([]domain.Entity, 0, 2)
 
 	var clearance int64
-	var division string
+	var division, region string
 	err := l.pool.QueryRow(ctx, `
-		SELECT p.clearance, d.key
+		SELECT p.clearance, d.key, p.region
 		FROM personas p JOIN divisions d ON d.id = p.division_id
-		WHERE p.id = $1`, req.Principal).Scan(&clearance, &division)
+		WHERE p.id = $1`, req.Principal).Scan(&clearance, &division, &region)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return nil, fmt.Errorf("query persona attrs: %w", err)
 	}
 	if err == nil {
 		ents = append(ents, domain.Entity{
 			UID:        domain.EntityUID{Type: typePersona, ID: req.Principal},
-			Attributes: map[string]any{"clearance": clearance, "division": division},
+			Attributes: map[string]any{"clearance": clearance, "division": division, "region": region},
 		})
 	}
 
 	var classification int64
-	var docDivision, status string
+	var docDivision, status, docRegion string
 	err = l.pool.QueryRow(ctx,
-		`SELECT classification, division_key, status FROM abac_documents WHERE id = $1`,
-		req.Resource).Scan(&classification, &docDivision, &status)
+		`SELECT classification, division_key, status, region FROM abac_documents WHERE id = $1`,
+		req.Resource).Scan(&classification, &docDivision, &status, &docRegion)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return nil, fmt.Errorf("query abac document: %w", err)
 	}
@@ -240,6 +245,7 @@ func (l *Loader) loadABAC(ctx context.Context, req domain.Request) ([]domain.Ent
 				"classification": classification,
 				"division":       docDivision,
 				"status":         status,
+				"region":         docRegion,
 			},
 		})
 	}
@@ -280,11 +286,11 @@ func (l *Loader) loadPBAC(ctx context.Context, req domain.Request) ([]domain.Ent
 	})
 
 	var active bool
-	var maxAmount int64
+	var minAmount, maxAmount int64
 	var regions []string
 	err = l.pool.QueryRow(ctx,
-		`SELECT active, max_amount, regions FROM pbac_policies WHERE id = $1`, policyID).
-		Scan(&active, &maxAmount, &regions)
+		`SELECT active, min_amount, max_amount, regions FROM pbac_policies WHERE id = $1`, policyID).
+		Scan(&active, &minAmount, &maxAmount, &regions)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return nil, fmt.Errorf("query pbac_policies: %w", err)
 	}
@@ -293,6 +299,7 @@ func (l *Loader) loadPBAC(ctx context.Context, req domain.Request) ([]domain.Ent
 			UID: domain.EntityUID{Type: typePbacPolicy, ID: policyID},
 			Attributes: map[string]any{
 				"active":     active,
+				"min_amount": minAmount,
 				"max_amount": maxAmount,
 				"regions":    regions,
 			},

@@ -223,8 +223,15 @@ func (s *Sampler) AbacDoc(d AbacDoc) error {
 		pi := s.rng.IntN(len(s.gen.Personas))
 		p := s.gen.Personas[pi]
 		divKey := s.personaDivisionKey(pi)
-		ctx := map[string]any{"clearance": int64(p.Clearance), "principal_division": divKey}
-		match := p.Clearance >= d.Classification && divKey == d.DivisionKey
+		ctx := map[string]any{
+			"clearance":          int64(p.Clearance),
+			"principal_division": divKey,
+			"principal_region":   p.Region,
+		}
+		// clearance ≥ classification AND division match AND data residency
+		// (same region OR clearance-4 national-auditor override)
+		match := p.Clearance >= d.Classification && divKey == d.DivisionKey &&
+			(p.Region == d.Region || p.Clearance == 4)
 		expected := "deny"
 		if match && d.Status != "archived" {
 			expected = "allow"
@@ -288,6 +295,8 @@ func (s *Sampler) PurchaseOrder(po PurchaseOrder) error {
 		return nil
 	}
 	assignee := assignees[s.rng.IntN(len(assignees))]
+	// inside the policy window: min_amount ≤ amount ≤ max_amount (max ≥ 10jt,
+	// min ≤ 5jt, so max − ≤1jt is always above the floor)
 	inAmount := po.PolicyMaxAmount - int64(s.rng.IntN(1_000_000)+1)
 	region := po.PolicyRegions[s.rng.IntN(len(po.PolicyRegions))]
 
@@ -299,14 +308,21 @@ func (s *Sampler) PurchaseOrder(po PurchaseOrder) error {
 			Expected: "allow",
 		})
 	}
-	// deny variants (rotate deterministically): over-amount, wrong region,
-	// unassigned persona, inactive policy
-	switch s.posSeen % 4 {
-	case 0: // over amount
+	// deny variants (rotate deterministically): over-ceiling, below-floor,
+	// wrong region, unassigned persona, inactive policy
+	switch s.posSeen % 5 {
+	case 0: // over the ceiling
 		s.add(Tuple{
 			Model: "pbac", Principal: assignee, Action: "po.approve",
 			ResourceType: "PurchaseOrder", Resource: po.ID,
 			Context:  map[string]any{"amount": po.PolicyMaxAmount + 1_000_000, "region": region},
+			Expected: "deny",
+		})
+	case 4: // below the floor (petty cash — no approval flow)
+		s.add(Tuple{
+			Model: "pbac", Principal: assignee, Action: "po.approve",
+			ResourceType: "PurchaseOrder", Resource: po.ID,
+			Context:  map[string]any{"amount": po.PolicyMinAmount - 1, "region": region},
 			Expected: "deny",
 		})
 	case 1: // region outside the policy
